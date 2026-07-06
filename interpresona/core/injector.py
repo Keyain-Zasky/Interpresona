@@ -172,7 +172,7 @@ class EXDInjector:
         for row in sorted_rows:
             offset_table.extend(struct.pack(">II", row.row_id, current_offset))
 
-            if self.schema.depth == 1:
+            if self.schema.row_type == 1:
                 row_overrides = self._overrides.get(row.row_id, {})
                 block = _build_flat_row(self.schema, row.values, row_overrides)
             else:

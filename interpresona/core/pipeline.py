@@ -122,7 +122,7 @@ class TranslationPipeline:
         self.records = []
 
         for row in self.rows:
-            if self.schema.depth == 1:
+            if self.schema.row_type == 1:
                 self._extract_values(row.row_id, None, row.values)
             else:
                 for sub in row.sub_rows:

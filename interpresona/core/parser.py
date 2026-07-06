@@ -240,7 +240,7 @@ class EXDParser:
         data_size, sub_row_count = struct.unpack(">IH", self.data[row_offset: row_offset + 6])
         row_end = row_offset + 6 + data_size
 
-        if self.schema.depth == 1:
+        if self.schema.row_type == 1:
             values = self._parse_flat_values(row_offset + 6, row_end)
             return RowData(row_id=row_id, values=values)
         else:
@@ -265,10 +265,16 @@ class EXDParser:
             fixed_data = self.data[ptr: ptr + row_size]
 
             # Find sub-row string table end by scanning for null terminator after last string
-            string_offsets = [
-                struct.unpack(">H", fixed_data[col.offset: col.offset + 2])[0]
-                for col in self.schema.columns if col.is_string
-            ]
+            string_offsets = []
+            for col in self.schema.columns:
+                if col.is_string:
+                    val_32 = struct.unpack(">I", fixed_data[col.offset: col.offset + 4])[0]
+                    # Check if standard 32-bit offset or shifted
+                    if val_32 < row_end - (ptr + row_size):
+                        str_off = val_32
+                    else:
+                        str_off = val_32 >> 16
+                    string_offsets.append(str_off)
             str_table_start = ptr + row_size
             if not string_offsets:
                 str_table_end = str_table_start
@@ -294,8 +300,15 @@ class EXDParser:
     def _decode_col(self, fixed_data: bytes, string_table: bytes, col: ColumnDef) -> Any:
         ct, off = col.col_type, col.offset
         if ct == 0x0000:  # String
-            # FFXIV string pointers are 4 bytes, but the offset is stored in the upper 16 bits
-            str_off = struct.unpack(">H", fixed_data[off: off + 2])[0]
+            # FFXIV string pointers are 4 bytes. In some files they are shifted to the upper 16 bits,
+            # in others (like sub-rows or flat quest files) they are stored as standard 32-bit offsets.
+            val_32 = struct.unpack(">I", fixed_data[off: off + 4])[0]
+            # If the offset fits in the string table, use it. If shifted, shift down.
+            if val_32 < len(string_table):
+                str_off = val_32
+            else:
+                str_off = val_32 >> 16
+            
             end = str_off
             while end < len(string_table) and string_table[end] != 0:
                 end += 1

@@ -122,7 +122,7 @@ class MockEXHGenerator:
         self.pages = pages      # list of dicts: {'start_id': int, 'row_count': int}
         self.languages = languages  # list of dicts: {'lang_id': int, 'unk': int}
         self.depth = depth
-        self.row_type = row_type
+        self.row_type = 2 if depth == 2 else row_type
         
         if row_size is not None:
             self.row_size = row_size

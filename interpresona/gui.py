@@ -210,9 +210,11 @@ class InterpresonaApp(tk.Tk):
         self._sqpack_sheets: list[str] = []
         self._current_sheet_name: str = ""   # name of currently loaded sheet
         self._entry_map: dict[str, tuple] = {}  # iid → (row_id, sub_row_id, col_idx)
+        self._mode: Optional[str] = None    # "manual" or "sqpack"
 
         self._setup_styles()
         self._build_ui()
+        self._show_startup_overlay()
 
     # ------------------------------------------------------------------
     # Style setup
@@ -220,20 +222,101 @@ class InterpresonaApp(tk.Tk):
     def _setup_styles(self):
         style = ttk.Style(self)
         style.theme_use("clam")
+        
+        # Base backgrounds & text colors
+        style.configure(".",
+                        background=BG_DARK,
+                        foreground=TEXT_PRI,
+                        bordercolor=BORDER,
+                        lightcolor=BORDER,
+                        darkcolor=BORDER)
+
+        # Scrollbars (modern flat design, no arrows, custom thumb)
+        style.layout("Vertical.TScrollbar", [
+            ("Vertical.Scrollbar.trough", {
+                "children": [
+                    ("Vertical.Scrollbar.thumb", {"expand": "1", "sticky": "nswe"})
+                ],
+                "sticky": "ns"
+            })
+        ])
+        style.layout("Horizontal.TScrollbar", [
+            ("Horizontal.Scrollbar.trough", {
+                "children": [
+                    ("Horizontal.Scrollbar.thumb", {"expand": "1", "sticky": "nswe"})
+                ],
+                "sticky": "ew"
+            })
+        ])
+        
+        style.configure("TScrollbar",
+                        troughcolor=BG_DARK,
+                        background=BORDER,
+                        bordercolor=BG_DARK,
+                        arrowcolor=TEXT_DIM,
+                        relief="flat",
+                        width=8)
+        style.map("TScrollbar",
+                  background=[("active", ACCENT), ("pressed", ACCENT_LIGHT)])
+
+        # Treeview (premium flat table styling)
         style.configure("Treeview",
-                         background=BG_CARD, foreground=TEXT_PRI,
-                         fieldbackground=BG_CARD, rowheight=22,
-                         bordercolor=BORDER, borderwidth=0,
-                         font=FONT_BODY)
+                        background=BG_CARD,
+                        foreground=TEXT_PRI,
+                        fieldbackground=BG_CARD,
+                        rowheight=28,
+                        borderwidth=0,
+                        font=FONT_BODY)
         style.configure("Treeview.Heading",
-                         background=BG_MID, foreground=ACCENT_LIGHT,
-                         font=FONT_SMALL, relief="flat")
+                        background=BG_MID,
+                        foreground=ACCENT_LIGHT,
+                        font=FONT_SUB,
+                        borderwidth=0,
+                        relief="flat")
         style.map("Treeview",
                   background=[("selected", ACCENT)],
                   foreground=[("selected", TEXT_PRI)])
+
+        # Tabs / Notebook (custom modern borderless flat tabs)
+        style.configure("TNotebook", background=BG_DARK, borderwidth=0, highlightthickness=0)
+        style.configure("TNotebook.Tab",
+                        background=BG_MID,
+                        foreground=TEXT_SEC,
+                        font=FONT_SUB,
+                        padding=[24, 10],
+                        borderwidth=0,
+                        focuscolor="",
+                        lightcolor=BG_DARK,
+                        darkcolor=BG_DARK,
+                        relief="flat")
+        # Ensure selected state doesn't change padding or shrink sizes
+        style.map("TNotebook.Tab",
+                  background=[("selected", ACCENT), ("active", BG_HOVER)],
+                  foreground=[("selected", TEXT_PRI), ("active", TEXT_PRI)],
+                  lightcolor=[("selected", ACCENT), ("active", BG_HOVER)],
+                  darkcolor=[("selected", ACCENT), ("active", BG_HOVER)],
+                  padding=[("selected", [24, 10]), ("active", [24, 10])])
+
         style.configure("TPanedwindow", background=BG_DARK)
-        style.configure("TScrollbar", background=BG_MID, troughcolor=BG_DARK,
-                         bordercolor=BG_DARK, arrowcolor=TEXT_DIM)
+        
+        # Soft Premium Combobox Styling (dark mode matching)
+        style.configure("TCombobox",
+                        fieldbackground=BG_CARD,
+                        background=BG_MID,
+                        foreground=TEXT_PRI,
+                        arrowcolor=TEXT_PRI,
+                        bordercolor=BORDER,
+                        lightcolor=BORDER,
+                        darkcolor=BORDER,
+                        padding=6)
+        style.map("TCombobox",
+                  fieldbackground=[("readonly", BG_CARD)],
+                  foreground=[("readonly", TEXT_PRI)])
+        # Configure the dropdown listbox option popup style
+        self.option_add("*TCombobox*Listbox.background", BG_CARD)
+        self.option_add("*TCombobox*Listbox.foreground", TEXT_PRI)
+        self.option_add("*TCombobox*Listbox.selectBackground", ACCENT)
+        self.option_add("*TCombobox*Listbox.selectForeground", TEXT_PRI)
 
     # ------------------------------------------------------------------
     # UI construction
@@ -244,12 +327,16 @@ class InterpresonaApp(tk.Tk):
         header.pack(fill="x", padx=0, pady=0)
 
         tk.Label(header, text="Interpresona", bg=BG_DARK, fg=ACCENT,
-                 font=("Segoe UI", 20, "bold")).pack(side="left", padx=(18, 4), pady=10)
+                 font=("Segoe UI", 22, "bold")).pack(side="left", padx=(18, 4), pady=12)
         tk.Label(header, text="— FFXIV Translation Tool", bg=BG_DARK, fg=TEXT_PRI,
-                 font=("Segoe UI", 20)).pack(side="left", pady=10)
+                 font=("Segoe UI", 22)).pack(side="left", pady=12)
         tk.Label(header, text="EXH/EXD  ·  SeString-safe  ·  Variable-preserving",
                  bg=BG_DARK, fg=TEXT_DIM,
-                 font=FONT_SMALL).pack(side="left", padx=18, pady=10)
+                 font=FONT_SMALL).pack(side="left", padx=18, pady=12)
+
+        # Mode quick-toggle button in header
+        self._mode_btn = FlatButton(header, text="Switch Mode", command=self._show_startup_overlay, accent=False)
+        self._mode_btn.pack(side="right", padx=18, pady=12)
 
         sep = tk.Frame(self, bg=BORDER, height=1)
         sep.pack(fill="x")
@@ -259,18 +346,18 @@ class InterpresonaApp(tk.Tk):
         body.pack(fill="both", expand=True, padx=0, pady=0)
 
         # Left sidebar with Scrollbar support for smaller screens
-        sidebar_outer = tk.Frame(body, bg=BG_MID, width=240)
+        sidebar_outer = tk.Frame(body, bg=BG_MID, width=250)
         sidebar_outer.pack(side="left", fill="y")
         sidebar_outer.pack_propagate(False)
 
-        canvas = tk.Canvas(sidebar_outer, bg=BG_MID, bd=0, highlightthickness=0, width=220)
+        canvas = tk.Canvas(sidebar_outer, bg=BG_MID, bd=0, highlightthickness=0, width=230)
         scrollbar = ttk.Scrollbar(sidebar_outer, orient="vertical", command=canvas.yview)
         scrollbar.pack(side="right", fill="y")
         canvas.pack(side="left", fill="both", expand=True)
         canvas.configure(yscrollcommand=scrollbar.set)
 
-        sidebar = tk.Frame(canvas, bg=BG_MID, width=220)
-        sidebar_window = canvas.create_window((0, 0), window=sidebar, anchor="nw", width=220)
+        sidebar = tk.Frame(canvas, bg=BG_MID, width=230)
+        sidebar_window = canvas.create_window((0, 0), window=sidebar, anchor="nw", width=230)
 
         def _on_sidebar_configure(event):
             canvas.configure(scrollregion=canvas.bbox("all"))
@@ -298,93 +385,145 @@ class InterpresonaApp(tk.Tk):
         self._status = StatusBar(self)
         self._status.pack(fill="x")
 
+    def _show_startup_overlay(self):
+        # Create an inline overlay frame inside the main window
+        self._overlay_frame = tk.Frame(self, bg=BG_DARK)
+        self._overlay_frame.place(relx=0, rely=0, relwidth=1, relheight=1)
+
+        # Center Container
+        center = tk.Frame(self._overlay_frame, bg=BG_DARK)
+        center.place(relx=0.5, rely=0.5, anchor="center")
+
+        title_lbl = tk.Label(center, text="Interpresona", bg=BG_DARK, fg=ACCENT, font=("Segoe UI", 36, "bold"))
+        title_lbl.pack(pady=(0, 6))
+
+        tagline = tk.Label(center, text="FFXIV dialogue and interface text translation suite", bg=BG_DARK, fg=TEXT_SEC, font=FONT_BODY)
+        tagline.pack(pady=(0, 36))
+
+        options_frame = tk.Frame(center, bg=BG_DARK)
+        options_frame.pack()
+
+        # SQPACK Option Card
+        sq_card = tk.Frame(options_frame, bg=BG_CARD, bd=1, highlightbackground=BORDER, highlightthickness=1)
+        sq_card.pack(side="left", padx=16, ipadx=10, ipady=10)
+        
+        sq_title = tk.Label(sq_card, text="SQPACK GAME LOADER", bg=BG_CARD, fg=ACCENT_LIGHT, font=FONT_SUB)
+        sq_title.pack(pady=(16, 6))
+        sq_desc = tk.Label(sq_card, text="Browse sheets directly from game repository files\n(automatically scans EXH/EXD sheets)", bg=BG_CARD, fg=TEXT_SEC, font=FONT_SMALL, wraplength=200)
+        sq_desc.pack(pady=(0, 20))
+        
+        FlatButton(sq_card, text="Select Mode", command=lambda: self._set_mode("sqpack"), accent=True).pack(pady=(0, 10))
+
+        # MANUAL Option Card
+        man_card = tk.Frame(options_frame, bg=BG_CARD, bd=1, highlightbackground=BORDER, highlightthickness=1)
+        man_card.pack(side="left", padx=16, ipadx=10, ipady=10)
+
+        man_title = tk.Label(man_card, text="MANUAL FILES", bg=BG_CARD, fg=ACCENT_LIGHT, font=FONT_SUB)
+        man_title.pack(pady=(16, 6))
+        man_desc = tk.Label(man_card, text="Translate standalone .exh / .exd files\nextracted on your computer manually", bg=BG_CARD, fg=TEXT_SEC, font=FONT_SMALL, wraplength=200)
+        man_desc.pack(pady=(0, 20))
+
+        FlatButton(man_card, text="Select Mode", command=lambda: self._set_mode("manual"), accent=True).pack(pady=(0, 10))
+
+    def _set_mode(self, mode: str):
+        self._mode = mode
+        
+        # Smooth transition effect using widget updates
+        def animate_fade(alpha=1.0):
+            if alpha > 0.0:
+                # Dim background during transition
+                self._overlay_frame.config(bg=BG_DARK)
+                self.after(16, lambda: animate_fade(alpha - 0.1))
+            else:
+                self._overlay_frame.destroy()
+                
+                # Apply visibility changes
+                if mode == "manual":
+                    self._manual_section.pack(fill="x", before=self._translation_sep)
+                    self._game_section.pack_forget()
+                    self._status.set("Manual Files Mode loaded.", SUCCESS)
+                else:
+                    self._game_section.pack(fill="x", before=self._translation_sep)
+                    self._manual_section.pack_forget()
+                    self._status.set("SqPack Game Loader Mode loaded.", SUCCESS)
+        
+        animate_fade()
+
     # ------------------------------------------------------------------
     # Sidebar
     # ------------------------------------------------------------------
     def _build_sidebar(self, parent: tk.Frame):
         pad = {"padx": 12, "pady": 4}
 
-        SectionLabel(parent, text="ADVANCED: MANUAL FILES").pack(anchor="w", padx=12, pady=(16, 4))
+        # Manual files mode section wrapper
+        self._manual_section = tk.Frame(parent, bg=BG_MID)
+        self._manual_section.pack(fill="x")
 
-        # EXH file
-        tk.Label(parent, text="Schema file (.exh)", bg=BG_MID, fg=TEXT_SEC,
-                 font=FONT_SMALL).pack(anchor="w", **pad)
+        SectionLabel(self._manual_section, text="MANUAL FILES (.exh/.exd)").pack(anchor="w", padx=12, pady=(16, 4))
+        tk.Label(self._manual_section, text="Schema file (.exh)", bg=BG_MID, fg=TEXT_SEC, font=FONT_SMALL).pack(anchor="w", **pad)
+        
         self._exh_var = tk.StringVar(value="No file selected")
-        tk.Label(parent, textvariable=self._exh_var, bg=BG_MID, fg=TEXT_DIM,
+        tk.Label(self._manual_section, textvariable=self._exh_var, bg=BG_MID, fg=TEXT_DIM,
                  font=FONT_SMALL, wraplength=200, justify="left").pack(anchor="w", padx=12)
-        FlatButton(parent, text="Browse EXH…", command=self._browse_exh).pack(
-            fill="x", padx=12, pady=(4, 8))
+        FlatButton(self._manual_section, text="Browse EXH…", command=self._browse_exh).pack(fill="x", padx=12, pady=(4, 8))
 
-        # EXD file
-        tk.Label(parent, text="Data file (.exd)", bg=BG_MID, fg=TEXT_SEC,
-                 font=FONT_SMALL).pack(anchor="w", **pad)
+        tk.Label(self._manual_section, text="Data file (.exd)", bg=BG_MID, fg=TEXT_SEC, font=FONT_SMALL).pack(anchor="w", **pad)
         self._exd_var = tk.StringVar(value="No file selected")
-        tk.Label(parent, textvariable=self._exd_var, bg=BG_MID, fg=TEXT_DIM,
+        tk.Label(self._manual_section, textvariable=self._exd_var, bg=BG_MID, fg=TEXT_DIM,
                  font=FONT_SMALL, wraplength=200, justify="left").pack(anchor="w", padx=12)
-        FlatButton(parent, text="Browse EXD…", command=self._browse_exd).pack(
-            fill="x", padx=12, pady=(4, 8))
+        FlatButton(self._manual_section, text="Browse EXD…", command=self._browse_exd).pack(fill="x", padx=12, pady=(4, 8))
 
-        FlatButton(parent, text="Load & Extract Strings", command=self._load_and_extract,
-                   accent=True).pack(fill="x", padx=12, pady=(4, 12))
+        FlatButton(self._manual_section, text="Load & Extract", command=self._load_and_extract, accent=True).pack(fill="x", padx=12, pady=(4, 12))
 
-        tk.Frame(parent, bg=BORDER, height=1).pack(fill="x", padx=12, pady=4)
+        # Game files loader mode section wrapper
+        self._game_section = tk.Frame(parent, bg=BG_MID)
+        # Hidden by default until mode is chosen
+        self._game_section.pack_forget()
 
-        # ── Load from Game ───────────────────────────────────────────────
-        SectionLabel(parent, text="LOAD FROM GAME  ★").pack(anchor="w", padx=12, pady=(12, 4))
-
-        tk.Label(parent, text="Game directory", bg=BG_MID, fg=TEXT_SEC,
-                 font=FONT_SMALL).pack(anchor="w", padx=12)
+        SectionLabel(self._game_section, text="LOAD FROM GAME FILES").pack(anchor="w", padx=12, pady=(16, 4))
+        tk.Label(self._game_section, text="Game directory", bg=BG_MID, fg=TEXT_SEC, font=FONT_SMALL).pack(anchor="w", padx=12)
+        
         self._game_dir_var = tk.StringVar(value="Not set")
-        tk.Label(parent, textvariable=self._game_dir_var, bg=BG_MID, fg=TEXT_DIM,
+        tk.Label(self._game_section, textvariable=self._game_dir_var, bg=BG_MID, fg=TEXT_DIM,
                  font=FONT_SMALL, wraplength=200, justify="left").pack(anchor="w", padx=12)
-        FlatButton(parent, text="Browse Game Folder…",
-                   command=self._browse_game_dir).pack(fill="x", padx=12, pady=(4, 4))
+        FlatButton(self._game_section, text="Browse Game Folder…", command=self._browse_game_dir).pack(fill="x", padx=12, pady=(4, 4))
 
-        tk.Label(parent, text="Language", bg=BG_MID, fg=TEXT_SEC,
-                 font=FONT_SMALL).pack(anchor="w", padx=12, pady=(6, 0))
+        tk.Label(self._game_section, text="Language", bg=BG_MID, fg=TEXT_SEC, font=FONT_SMALL).pack(anchor="w", padx=12, pady=(6, 0))
         self._lang_var = tk.StringVar(value="en")
-        lang_frame = tk.Frame(parent, bg=BG_MID)
+        lang_frame = tk.Frame(self._game_section, bg=BG_MID)
         lang_frame.pack(fill="x", padx=12, pady=(2, 4))
+        
         lang_menu = ttk.Combobox(lang_frame, textvariable=self._lang_var,
                                   values=["en", "ja", "de", "fr", "chs", "cht", "ko"],
                                   state="readonly", width=8,
                                   font=FONT_BODY)
         lang_menu.pack(side="left")
 
-        FlatButton(parent, text="Browse & Load Sheet…",
-                   command=self._browse_and_load_sheet,
-                   accent=True).pack(fill="x", padx=12, pady=(2, 12))
+        FlatButton(self._game_section, text="Browse & Load Sheet…", command=self._browse_and_load_sheet, accent=True).pack(fill="x", padx=12, pady=(2, 12))
 
-        tk.Frame(parent, bg=BORDER, height=1).pack(fill="x", padx=12, pady=4)
+        self._translation_sep = tk.Frame(parent, bg=BORDER, height=1)
+        self._translation_sep.pack(fill="x", padx=12, pady=4)
 
         SectionLabel(parent, text="TRANSLATION").pack(anchor="w", padx=12, pady=(12, 4))
-
-        FlatButton(parent, text="Export CSV for MT…", command=self._export_csv).pack(
-            fill="x", padx=12, pady=4)
-        FlatButton(parent, text="Import Translated CSV…", command=self._import_csv).pack(
-            fill="x", padx=12, pady=4)
+        FlatButton(parent, text="Export CSV for MT…", command=self._export_csv).pack(fill="x", padx=12, pady=4)
+        FlatButton(parent, text="Import Translated CSV…", command=self._import_csv).pack(fill="x", padx=12, pady=4)
 
         tk.Frame(parent, bg=BORDER, height=1).pack(fill="x", padx=12, pady=8)
 
         SectionLabel(parent, text="OUTPUT").pack(anchor="w", padx=12, pady=(4, 4))
-        FlatButton(parent, text="Save Translated EXD...",
-                   command=self._save_exd, accent=True).pack(
-            fill="x", padx=12, pady=4)
+        FlatButton(parent, text="Save Translated EXD...", command=self._save_exd, accent=True).pack(fill="x", padx=12, pady=4)
 
         tk.Frame(parent, bg=BORDER, height=1).pack(fill="x", padx=12, pady=8)
 
         SectionLabel(parent, text="SESSION").pack(anchor="w", padx=12, pady=(4, 4))
-        FlatButton(parent, text="Save Session...",
-                   command=self._save_session).pack(fill="x", padx=12, pady=4)
-        FlatButton(parent, text="Load Session...",
-                   command=self._load_session).pack(fill="x", padx=12, pady=4)
+        FlatButton(parent, text="Save Session...", command=self._save_session).pack(fill="x", padx=12, pady=4)
+        FlatButton(parent, text="Load Session...", command=self._load_session).pack(fill="x", padx=12, pady=4)
 
         # Filler
         tk.Frame(parent, bg=BG_MID).pack(fill="both", expand=True)
 
         # Version footer
-        tk.Label(parent, text="Interpresona v1.2.0  |  Standalone",
-                 bg=BG_MID, fg=TEXT_DIM, font=FONT_SMALL).pack(pady=10)
+        tk.Label(parent, text="Interpresona v1.2.0  |  Standalone", bg=BG_MID, fg=TEXT_DIM, font=FONT_SMALL).pack(pady=10)
 
     # ------------------------------------------------------------------
     # Main content area
@@ -430,14 +569,28 @@ class InterpresonaApp(tk.Tk):
         filter_entry.pack(side="left", padx=4, pady=6, ipady=3)
 
         self._show_var = tk.StringVar(value="all")
+        self._filter_pills = []
+        
+        def _on_pill_click(clicked_val):
+            self._show_var.set(clicked_val)
+            self._apply_filter()
+            # Update background colors dynamically to simulate premium active tabs
+            for pill_val, pill_btn in self._filter_pills:
+                if pill_val == clicked_val:
+                    pill_btn.config(bg=ACCENT, fg=TEXT_PRI)
+                else:
+                    pill_btn.config(bg=BG_CARD, fg=TEXT_SEC)
+
         for val, label in [("all", "All"), ("pending", "Pending"), ("done", "Translated"), ("error", "Errors")]:
-            rb = tk.Radiobutton(toolbar, text=label, variable=self._show_var, value=val,
-                                command=self._apply_filter,
-                                bg=BG_MID, fg=TEXT_SEC, selectcolor=ACCENT,
-                                activebackground=BG_MID, font=FONT_SMALL,
-                                indicatoron=False, padx=8, pady=4,
-                                relief="flat", cursor="hand2")
-            rb.pack(side="left", padx=2)
+            # Initial active styling
+            init_bg = ACCENT if val == "all" else BG_CARD
+            init_fg = TEXT_PRI if val == "all" else TEXT_SEC
+            
+            btn = tk.Button(toolbar, text=label, command=lambda v=val: _on_pill_click(v),
+                            bg=init_bg, fg=init_fg, activebackground=ACCENT_LIGHT, activeforeground=TEXT_PRI,
+                            font=FONT_SMALL, relief="flat", borderwidth=0, padx=12, pady=4, cursor="hand2")
+            btn.pack(side="left", padx=3, pady=6)
+            self._filter_pills.append((val, btn))
 
         # Treeview with columns — translator-friendly view (no internal indices)
         cols = ("entry", "original", "translated", "status")
@@ -487,19 +640,39 @@ class InterpresonaApp(tk.Tk):
         edit_row = tk.Frame(editor_frame, bg=BG_MID)
         edit_row.pack(fill="x", padx=10, pady=(0, 8))
 
-        self._edit_original = tk.Entry(edit_row, bg=BG_DARK, fg=TEXT_DIM,
-                                       relief="flat", font=FONT_MONO,
-                                       state="readonly", readonlybackground=BG_DARK)
-        self._edit_original.pack(side="left", fill="x", expand=True, ipady=4, padx=(0, 6))
+        # Multiline text areas with custom border simulation (premium cards with thin borders)
+        original_border = tk.Frame(edit_row, bg=BORDER, bd=1, highlightthickness=0)
+        original_border.pack(side="left", fill="both", expand=True, padx=(0, 6))
+        self._edit_original = tk.Text(original_border, bg=BG_DARK, fg=TEXT_SEC,
+                                      relief="flat", font=FONT_BODY, height=3,
+                                      wrap="word", insertbackground=TEXT_PRI,
+                                      padx=8, pady=6,
+                                      selectbackground=ACCENT, selectforeground=TEXT_PRI)
+        self._edit_original.pack(fill="both", expand=True, padx=1, pady=1)
+        self._edit_original.config(state="disabled")
 
-        self._edit_translated = tk.Entry(edit_row, bg=BG_CARD, fg=TEXT_PRI,
-                                         insertbackground=TEXT_PRI,
-                                         relief="flat", font=FONT_MONO)
-        self._edit_translated.pack(side="left", fill="x", expand=True, ipady=4, padx=(0, 6))
-        self._edit_translated.bind("<Return>", self._commit_inline_edit)
+        translated_border = tk.Frame(edit_row, bg=BORDER, bd=1, highlightthickness=0)
+        translated_border.pack(side="left", fill="both", expand=True, padx=(0, 6))
+        self._edit_translated = tk.Text(translated_border, bg=BG_CARD, fg=TEXT_PRI,
+                                        relief="flat", font=FONT_BODY, height=3,
+                                        wrap="word", insertbackground=TEXT_PRI,
+                                        padx=8, pady=6,
+                                        selectbackground=ACCENT, selectforeground=TEXT_PRI)
+        self._edit_translated.pack(fill="both", expand=True, padx=1, pady=1)
 
-        FlatButton(edit_row, text="Save", command=self._commit_inline_edit,
-                   accent=True).pack(side="left")
+        # Custom focus highlight simulation
+        self._edit_translated.bind("<FocusIn>", lambda e: translated_border.config(bg=ACCENT))
+        self._edit_translated.bind("<FocusOut>", lambda e: translated_border.config(bg=BORDER))
+
+        # Bind Enter to commit, Shift+Enter to insert newlines
+        def _on_enter_pressed(event):
+            self._commit_inline_edit()
+            return "break"
+        self._edit_translated.bind("<Return>", _on_enter_pressed)
+
+        # Style-aligned Save Button
+        FlatButton(edit_row, text="Save Translation", command=self._commit_inline_edit,
+                   accent=True).pack(side="left", fill="y", ipadx=10)
 
         self._selected_key: Optional[tuple] = None
 
@@ -846,10 +1019,17 @@ class InterpresonaApp(tk.Tk):
         try:
             reader = SqPackReader.from_game_directory(game_dir)
             self._sqpack_reader = reader
-            self._sqpack_sheets = reader.list_exd_sheets()
+            
+            # Filter sheets: keep only sheets with names implying readable dialogs or texts,
+            # like quest, talk, text, addon, guide, opening, cutscene, etc.
+            raw_sheets = reader.list_exd_sheets()
+            self._sqpack_sheets = [
+                s for s in raw_sheets
+                if any(x in s.lower() for x in ("quest", "talk", "text", "opening", "cutscene", "dawn", "addon", "chat", "bubble"))
+            ]
             self._game_dir_var.set(game_dir.name)
             msg = (f"SqPack opened: {reader.entry_count} index entries, "
-                   f"{len(self._sqpack_sheets)} sheets in root.exl")
+                   f"{len(self._sqpack_sheets)} dialog sheets filtered from {len(raw_sheets)} total")
             self._status.set(msg, SUCCESS)
             self._log_msg(msg, "success")
         except Exception as exc:
@@ -1122,12 +1302,12 @@ class InterpresonaApp(tk.Tk):
         translated = vals[2]
 
         self._edit_original.config(state="normal")
-        self._edit_original.delete(0, "end")
-        self._edit_original.insert(0, original)
-        self._edit_original.config(state="readonly")
+        self._edit_original.delete("1.0", "end")
+        self._edit_original.insert("1.0", original)
+        self._edit_original.config(state="disabled")
 
-        self._edit_translated.delete(0, "end")
-        self._edit_translated.insert(0, translated)
+        self._edit_translated.delete("1.0", "end")
+        self._edit_translated.insert("1.0", translated)
         self._edit_translated.focus_set()
 
         # Store current key using the entry map (avoids exposing internal indices)
@@ -1141,7 +1321,8 @@ class InterpresonaApp(tk.Tk):
     def _commit_inline_edit(self, event=None):
         if not self._pipeline or not self._selected_key:
             return
-        translated = self._edit_translated.get().strip()
+        # Get content from Text box (strip trailing newline added automatically by Text)
+        translated = self._edit_translated.get("1.0", "end-1c").strip()
         key = self._selected_key
         # Find the record
         rec = next((r for r in self._pipeline.records if r.key == key), None)
@@ -1173,8 +1354,17 @@ class InterpresonaApp(tk.Tk):
         show = self._show_var.get()
         filt = self._filter_var.get().lower()
 
+        # Compile a quick regex to identify pure technical ID keys (e.g., uppercase alphanum/underscore keys)
+        import re
+        technical_key_pat = re.compile(r"^[A-Z][A-Z0-9_]{4,80}$")
+
         entry_num = 0
         for rec in records:
+            # Skip records whose masked text is a pure technical key
+            text_str = rec.masked_text.strip()
+            if technical_key_pat.match(text_str) or text_str.startswith("TEXT_") or text_str.startswith("KEY_"):
+                continue
+
             if rec.errors:
                 status, tag = "⚠ Error", "error"
             elif rec.translated_text:
