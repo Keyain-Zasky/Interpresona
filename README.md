@@ -26,31 +26,66 @@ Interpresona is a premium, high-performance desktop application designed for ext
 
 ```mermaid
 graph TD
-    A[SqPack Game Files / Manual EXH & EXD] --> B[EXD Parser]
-    B --> C[SeString Masker]
-    C --> D[Translatable Dialogue List]
-    D --> E[In-App Inline Editor / CSV Bulk Export]
-    E --> F[Machine Translation / Manual Editing]
-    F --> G[SeString Unmasker]
-    G --> H[EXD Injector]
-    H --> I[Translated EXD Output]
-.exd page data is rebuilt with new string pointers and original variable bytes preserved.
+    A["SqPack Game Files / Manual EXH & EXD"] --> B["EXD Parser"]
+    B --> C["SeString Masker"]
+    C --> D["Translatable Dialogue List"]
+    D --> E["In-App Inline Editor / CSV Bulk Export"]
+    E --> F["Machine Translation / Manual Editing"]
+    F --> G["SeString Unmasker"]
+    G --> H["EXD Injector"]
+    H --> I["Translated EXD Output"]
 ```
 
-### 1. Parsing
-The application reads the `.exh` schema to determine column offsets, row sizes, row depths, and whether the sheets contain sub-rows. It then decompresses the `.exd` file, resolves string pointers (including shifts in flat sheets and literal bytes in sub-row indices), and outputs a structured key-value dataset.
+*The .exd page data is rebuilt with recalculated string pointers, while all original variable bytes are preserved.*
 
-### 2. Masking
-Any binary payload containing localized variables (like `0x02` control tags) is parsed into `⟪VAR_X⟫` markers. This protects internal macros from syntax corruption during translation.
+---
 
-### 3. Translation
-You can translate text using:
-* The **Inline Editor** at the bottom of the main interface (press `Enter` to save).
-* The **Auto-Translate** tab with a configured API provider.
-* Exporting/Importing CSV templates.
+## Technical Details & Architecture
 
-### 4. Injection
-When saving, the injector recalculates the string table boundaries, builds new binary payloads, preserves all integer columns, and writes the output back into the FFXIV client page format.
+### 1. Game Data Extraction (SqPack Reader)
+The `SqPackReader` reads FFXIV retail assets from the `sqpack/` directory. FFXIV organizes assets using index files (`.index`) and data archives (`.dat` files).
+- **Path Hashing**: Paths are hashed using the bitwise-NOT of CRC32 for the lowercased ASCII text (`~crc32(path)`).
+- **Index Lookup**: It maps folder and filename hashes to locate the data block position (data archive ID and byte offset) within the target `.dat` archive.
+- **Decompression**: The compressed data blocks are read and parsed using raw zlib deflate (`decompress(chunk, -15)`).
+
+### 2. Schema and Sheet Structure (.exh & .exd)
+- **EXH Schema**: Defines the row size, column definitions, and depth layout. It maps column types (such as `0x0000` for Strings, `0x0001` for Booleans, and others representing different integer sizes).
+- **EXD Pages**: Contains rows grouped in pages.
+- **Row Formats**:
+  - **Flat Rows (row_type = 1)**: Simple, contiguous database rows.
+  - **Sub-Rows (row_type = 2)**: Nested rows under a single row ID (common in quests and dialogue sheets). The first 2 bytes of the payload contain the sub-row ID.
+- **String Pointers**: FFXIV string pointers are 4 bytes. In flat sheets, the offset is typically stored shifted to the upper 16 bits of the field. In sub-row files (and some flat quest dialogue files), they are stored as standard 32-bit big-endian offsets. The parser automatically detects this on the fly.
+
+### 3. Dialogue Text Masking Engine
+To protect the integrity of the game's formatting during translation, localized variables, text styling instructions, and macro instructions are masked:
+- **Control Codes**: FFXIV uses `0x02` prefix bytes followed by variable-length parameters to handle conditional dialogue blocks, color rendering, and character name insertion (e.g. `<Clickable>`, `<If(PlayerGender)>`).
+- **Placeholder Generation**: The `mask` logic extracts these bytes, saves them in an internal dictionary, and replaces them with user-friendly tokens (e.g., `⟪VAR_0⟫`).
+- **Safety Verification**: During translation saving or CSV importing, the engine validates that all placeholders are preserved to prevent runtime client crashes.
+
+---
+
+## Detailed Directory Map
+
+```
+Interpresona/
+├── run_gui.py                    # Main startup script for the Tkinter desktop GUI
+├── README.md                     # Comprehensive project documentation
+├── LICENSE                       # MIT Open Source License
+└── interpresona/
+    ├── gui.py                    # Visual layout, themes, filters, and editor bindings
+    ├── core/
+    │   ├── sqpack.py             # Binary SqPack archive and index reader
+    │   ├── parser.py             # Parser for EXH schema structures and EXD rows
+    │   ├── injector.py           # Recompiler and injector for translated sheets
+    │   ├── masker.py             # SeString variable masking engine
+    │   ├── session.py            # Translation state save/load utilities (.ffxivts)
+    │   └── translator.py         # DeepL & LibreTranslate integration wrappers
+    └── tests/
+        ├── run_all_tests.py      # Independent test runner for the test suite
+        ├── test_parser.py        # Binary reader & parser unit tests
+        ├── test_pipeline.py      # End-to-end extraction and injection unit tests
+        └── mock_generator.py     # Random mock EXH/EXD byte generator for test assertions
+```
 
 ---
 
@@ -73,16 +108,6 @@ This project uses `uv` as its Python package and environment manager.
    ```bash
    uv run python interpresona/tests/run_all_tests.py
    ```
-
----
-
-## Project Structure
-
-* [interpresona/gui.py](file:///C:/Users/d.paolozzi/Documents/antigravity/beautiful-bose/interpresona/gui.py) — Tkinter graphical interface, styling theme, and event binds.
-* [interpresona/core/parser.py](file:///C:/Users/d.paolozzi/Documents/antigravity/beautiful-bose/interpresona/core/parser.py) — Low-level binary `.exh` and `.exd` data reader.
-* [interpresona/core/injector.py](file:///C:/Users/d.paolozzi/Documents/antigravity/beautiful-bose/interpresona/core/injector.py) — Low-level binary writer and string offsets allocator.
-* [interpresona/core/masker.py](file:///C:/Users/d.paolozzi/Documents/antigravity/beautiful-bose/interpresona/core/masker.py) — Safe-regex masking engine for FFXIV SeString control codes.
-* [interpresona/core/sqpack.py](file:///C:/Users/d.paolozzi/Documents/antigravity/beautiful-bose/interpresona/core/sqpack.py) — Zlib reader for FFXIV retail `.index` and `.dat` archives.
 
 ---
 
