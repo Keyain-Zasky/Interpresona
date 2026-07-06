@@ -1,0 +1,1 @@
+# FFXIV Translation Tool package
