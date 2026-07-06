@@ -425,6 +425,17 @@ class InterpresonaApp(tk.Tk):
 
         FlatButton(man_card, text="Select Mode", command=lambda: self._set_mode("manual"), accent=True).pack(pady=(0, 10))
 
+        # MASS Option Card
+        mass_card = tk.Frame(options_frame, bg=BG_CARD, bd=1, highlightbackground=BORDER, highlightthickness=1)
+        mass_card.pack(side="left", padx=16, ipadx=10, ipady=10)
+
+        mass_title = tk.Label(mass_card, text="MASS TRANSLATOR", bg=BG_CARD, fg=ACCENT_LIGHT, font=FONT_SUB)
+        mass_title.pack(pady=(16, 6))
+        mass_desc = tk.Label(mass_card, text="Batch translate entire folders of FFXIV files\nautomatically using the configured MT engines", bg=BG_CARD, fg=TEXT_SEC, font=FONT_SMALL, wraplength=200)
+        mass_desc.pack(pady=(0, 20))
+
+        FlatButton(mass_card, text="Select Mode", command=lambda: self._set_mode("mass"), accent=True).pack(pady=(0, 10))
+
     def _set_mode(self, mode: str):
         self._mode = mode
         
@@ -441,10 +452,17 @@ class InterpresonaApp(tk.Tk):
                 if mode == "manual":
                     self._manual_section.pack(fill="x", before=self._translation_sep)
                     self._game_section.pack_forget()
+                    self._mass_section.pack_forget()
                     self._status.set("Manual Files Mode loaded.", SUCCESS)
+                elif mode == "mass":
+                    self._mass_section.pack(fill="x", before=self._translation_sep)
+                    self._manual_section.pack_forget()
+                    self._game_section.pack_forget()
+                    self._status.set("Mass Folder Translator Mode loaded.", SUCCESS)
                 else:
                     self._game_section.pack(fill="x", before=self._translation_sep)
                     self._manual_section.pack_forget()
+                    self._mass_section.pack_forget()
                     self._status.set("SqPack Game Loader Mode loaded.", SUCCESS)
         
         animate_fade()
@@ -474,6 +492,25 @@ class InterpresonaApp(tk.Tk):
         FlatButton(self._manual_section, text="Browse EXD…", command=self._browse_exd).pack(fill="x", padx=12, pady=(4, 8))
 
         FlatButton(self._manual_section, text="Load & Extract", command=self._load_and_extract, accent=True).pack(fill="x", padx=12, pady=(4, 12))
+
+        # Mass Folder Translator section wrapper
+        self._mass_section = tk.Frame(parent, bg=BG_MID)
+        self._mass_section.pack_forget()
+
+        SectionLabel(self._mass_section, text="MASS TRANSLATOR").pack(anchor="w", padx=12, pady=(16, 4))
+        tk.Label(self._mass_section, text="Source folder containing files", bg=BG_MID, fg=TEXT_SEC, font=FONT_SMALL).pack(anchor="w", **pad)
+        self._mass_src_var = tk.StringVar(value="No folder selected")
+        tk.Label(self._mass_section, textvariable=self._mass_src_var, bg=BG_MID, fg=TEXT_DIM,
+                 font=FONT_SMALL, wraplength=200, justify="left").pack(anchor="w", padx=12)
+        FlatButton(self._mass_section, text="Select Source Folder…", command=self._browse_mass_src).pack(fill="x", padx=12, pady=(4, 8))
+
+        tk.Label(self._mass_section, text="Output destination folder", bg=BG_MID, fg=TEXT_SEC, font=FONT_SMALL).pack(anchor="w", **pad)
+        self._mass_out_var = tk.StringVar(value="No folder selected")
+        tk.Label(self._mass_section, textvariable=self._mass_out_var, bg=BG_MID, fg=TEXT_DIM,
+                 font=FONT_SMALL, wraplength=200, justify="left").pack(anchor="w", padx=12)
+        FlatButton(self._mass_section, text="Select Output Folder…", command=self._browse_mass_out).pack(fill="x", padx=12, pady=(4, 8))
+
+        FlatButton(self._mass_section, text="Run Batch Translate", command=self._run_mass_translate, accent=True).pack(fill="x", padx=12, pady=(4, 12))
 
         # Game files loader mode section wrapper
         self._game_section = tk.Frame(parent, bg=BG_MID)
@@ -1008,6 +1045,112 @@ class InterpresonaApp(tk.Tk):
             self._exd_path = Path(p)
             self._exd_var.set(self._exd_path.name)
             self._log_msg(f"EXD: {p}", "info")
+
+    def _browse_mass_src(self):
+        p = filedialog.askdirectory(title="Select Source Folder containing EXH/EXD files")
+        if p:
+            self._mass_src_path = Path(p)
+            self._mass_src_var.set(self._mass_src_path.name)
+            self._log_msg(f"Mass Source Folder: {p}", "info")
+
+    def _browse_mass_out(self):
+        p = filedialog.askdirectory(title="Select Output Destination Folder")
+        if p:
+            self._mass_out_path = Path(p)
+            self._mass_out_var.set(self._mass_out_path.name)
+            self._log_msg(f"Mass Output Folder: {p}", "info")
+
+    def _run_mass_translate(self):
+        src_dir = getattr(self, "_mass_src_path", None)
+        out_dir = getattr(self, "_mass_out_path", None)
+        if not src_dir or not out_dir:
+            messagebox.showwarning("Missing folders", "Please select both source and output folders first.")
+            return
+
+        try:
+            translator = self._build_translator()
+        except ValueError as exc:
+            messagebox.showerror("Configuration Error", str(exc))
+            return
+
+        exh_files = list(src_dir.glob("*.exh"))
+        if not exh_files:
+            messagebox.showinfo("No files found", "No .exh schema files found in the source folder.")
+            return
+
+        self._log_msg(f"Starting batch translation of {len(exh_files)} sheet(s)...", "info")
+        self._status.set("Batch translating...", WARNING)
+
+        import re
+        technical_key_pat = re.compile(r"^[A-Z][A-Z0-9_]{4,80}$")
+
+        success_count = 0
+        for exh_path in exh_files:
+            # Look for matching exd pages
+            exd_pattern = f"{exh_path.stem}_*.exd"
+            exd_files = list(src_dir.glob(exd_pattern))
+            if not exd_files:
+                # Try fallback matching file name without page suffixes
+                fallback_exd = src_dir / f"{exh_path.stem}.exd"
+                if fallback_exd.exists():
+                    exd_files = [fallback_exd]
+                else:
+                    self._log_msg(f"  Skipping {exh_path.name}: no matching .exd files found", "warning")
+                    continue
+
+            self._log_msg(f"Translating sheet {exh_path.stem}...", "info")
+            try:
+                exh_bytes = exh_path.read_bytes()
+                exd_pages = [f.read_bytes() for f in exd_files]
+                
+                pipeline = TranslationPipeline(exh_bytes, exd_pages)
+                records = pipeline.extract()
+
+                # Filter translatable targets (skipping technical IDs)
+                targets = []
+                for rec in records:
+                    text_str = rec.masked_text.strip()
+                    if technical_key_pat.match(text_str) or text_str.startswith("TEXT_") or text_str.startswith("KEY_"):
+                        continue
+                    if not rec.translated_text and not rec.errors:
+                        targets.append(rec)
+
+                if targets:
+                    self._log_msg(f"  Found {len(targets)} translatable string(s). Translating...", "info")
+                    # Batch translate targets in chunks
+                    CHUNK = 20
+                    for chunk_start in range(0, len(targets), CHUNK):
+                        chunk = targets[chunk_start: chunk_start + CHUNK]
+                        texts = [r.masked_text for r in chunk]
+                        translated_list = translator.translate_batch(texts)
+                        for rec, translated in zip(chunk, translated_list):
+                            # Verify placeholders
+                            from interpresona.core.masker import validate_placeholders as _val
+                            ph_err = _val(rec.masked_text, translated, rec.placeholders)
+                            if ph_err:
+                                self._log_msg(f"    Row {rec.row_id}: placeholder mismatch — skipped", "warning")
+                            else:
+                                rec.translated_text = translated
+
+                # Save translated exd files back to output folder
+                page_data = pipeline.inject_all()
+                for page_id, binary in page_data.items():
+                    # Preserve exact filename structure of source EXD files
+                    if len(exd_files) == 1 and not "_" in exd_files[0].stem:
+                        out_name = f"{exh_path.stem}.exd"
+                    else:
+                        out_name = f"{exh_path.stem}_{page_id}.exd"
+                    (Path(out_dir) / out_name).write_bytes(binary)
+                
+                # Write matching exh schema alongside
+                (Path(out_dir) / exh_path.name).write_bytes(exh_bytes)
+                self._log_msg(f"  Successfully saved {exh_path.stem} translated files to output folder", "success")
+                success_count += 1
+            except Exception as exc:
+                self._log_msg(f"  Error processing sheet {exh_path.name}: {exc}", "error")
+
+        self._log_msg(f"Batch translation completed. {success_count} / {len(exh_files)} sheets translated.", "success")
+        self._status.set(f"Batch MT finished. {success_count} sheets saved.", SUCCESS)
 
     def _browse_game_dir(self):
         p = filedialog.askdirectory(title="Select FFXIV Game Directory (the folder containing 'game/')")
