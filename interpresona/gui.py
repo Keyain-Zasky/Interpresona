@@ -1144,14 +1144,28 @@ class InterpresonaApp(tk.Tk):
             messagebox.showinfo("No sheets", "No dialogue sheets found in root.exl.")
             return
 
+        # Switch to Auto-Translate tab so the user can visually track progress
+        self._nb.select(self._tab_mt)
+
         self._log_msg(f"Starting batch translation of {len(sheets)} SqPack sheet(s) to language '{lang}'...", "info")
         self._status.set("SqPack Batch MT...", WARNING)
+
+        # Set up progress bar
+        self._mt_progress_bar["maximum"] = len(sheets)
+        self._mt_progress_bar["value"] = 0
 
         import re
         technical_key_pat = re.compile(r"^[A-Z][A-Z0-9_]{4,80}$")
 
         success_count = 0
-        for sheet_name in sheets:
+        for i, sheet_name in enumerate(sheets):
+            # Update UI progress metrics
+            self._mt_progress_bar["value"] = i
+            self._mt_progress_var.set(
+                f"SqPack Batch: processing {sheet_name} ({i}/{len(sheets)} sheets translated)"
+            )
+            self.update()
+
             self._log_msg(f"Processing sheet {sheet_name}...", "info")
             
             exh_path = SqPackReader.exh_path(sheet_name)
@@ -1214,7 +1228,6 @@ class InterpresonaApp(tk.Tk):
 
                 # Save translated EXD pages back to output folder.
                 # Since sheet names can contain folders (e.g. quest/004/ManFst008_00448),
-                # flatten or create directories
                 safe_sheet_name = sheet_name.replace("/", "_")
                 page_data = pipeline.inject_all()
                 for page_id, binary in page_data.items():
@@ -1228,8 +1241,11 @@ class InterpresonaApp(tk.Tk):
             except Exception as exc:
                 self._log_msg(f"  Error processing sheet {sheet_name}: {exc}", "error")
 
+        self._mt_progress_bar["value"] = len(sheets)
+        self._mt_progress_var.set(f"SqPack Batch finished: {success_count} / {len(sheets)} translated.")
         self._log_msg(f"SqPack Batch translation completed. {success_count} / {len(sheets)} sheets translated.", "success")
         self._status.set(f"SqPack Batch finished. {success_count} sheets saved.", SUCCESS)
+        self.update()
 
     def _run_mass_translate(self):
         src_dir = getattr(self, "_mass_src_path", None)
@@ -1249,14 +1265,21 @@ class InterpresonaApp(tk.Tk):
             messagebox.showinfo("No files found", "No .exh schema files found in the source folder.")
             return
 
+        self._nb.select(self._tab_mt)
         self._log_msg(f"Starting batch translation of {len(exh_files)} sheet(s)...", "info")
         self._status.set("Batch translating...", WARNING)
+        self._mt_progress_bar["maximum"] = len(exh_files)
+        self._mt_progress_bar["value"] = 0
 
         import re
         technical_key_pat = re.compile(r"^[A-Z][A-Z0-9_]{4,80}$")
 
         success_count = 0
-        for exh_path in exh_files:
+        for i, exh_path in enumerate(exh_files):
+            self._mt_progress_bar["value"] = i
+            self._mt_progress_var.set(f"Batch Translate: {exh_path.stem} ({i}/{len(exh_files)})")
+            self.update()
+            
             # Look for matching exd pages
             exd_pattern = f"{exh_path.stem}_*.exd"
             exd_files = list(src_dir.glob(exd_pattern))
@@ -1302,6 +1325,7 @@ class InterpresonaApp(tk.Tk):
                                 self._log_msg(f"    Row {rec.row_id}: placeholder mismatch — skipped", "warning")
                             else:
                                 rec.translated_text = translated
+                        self.update()
 
                 # Save translated exd files back to output folder
                 page_data = pipeline.inject_all()
@@ -1320,8 +1344,11 @@ class InterpresonaApp(tk.Tk):
             except Exception as exc:
                 self._log_msg(f"  Error processing sheet {exh_path.name}: {exc}", "error")
 
+        self._mt_progress_bar["value"] = len(exh_files)
+        self._mt_progress_var.set(f"Batch completed: {success_count} / {len(exh_files)} sheets translated.")
         self._log_msg(f"Batch translation completed. {success_count} / {len(exh_files)} sheets translated.", "success")
         self._status.set(f"Batch MT finished. {success_count} sheets saved.", SUCCESS)
+        self.update()
 
     def _browse_game_dir(self):
         p = filedialog.askdirectory(title="Select FFXIV Game Directory (the folder containing 'game/')")
@@ -1578,16 +1605,11 @@ class InterpresonaApp(tk.Tk):
                 dest_dir = Path(out_dir)
                 page_data = self._pipeline.inject_all()
                 saved = 0
-                for page_idx, binary in page_data.items():
-                    if sheet:
-                        filename = SqPackReader.exd_path(sheet, page_idx, lang).split("/")[-1]
-                    else:
-                        filename = f"output_{page_idx}.exd"
-                    out_path = dest_dir / filename
-                    out_path.write_bytes(binary)
-                    self._log_msg(
-                        f"  Page {page_idx}: {out_path.name} ({len(binary):,} bytes)", "success"
-                    )
+                for page_id, binary in page_data.items():
+                    exd_name = f"{sheet}_{page_id}.exd" if sheet else (self._exd_path.stem + f"_{page_id}.exd" if self._exd_path else f"page_{page_id}.exd")
+                    dest_file = dest_dir / exd_name
+                    dest_file.write_bytes(binary)
+                    self._log_msg(f"Saved translated EXD page {page_id} ({len(binary):,} bytes) to {dest_file.name}", "success")
                     saved += 1
                 
                 # Also save the EXH file in the multi-page folder
