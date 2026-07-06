@@ -405,33 +405,44 @@ class InterpresonaApp(tk.Tk):
 
         # SQPACK Option Card
         sq_card = tk.Frame(options_frame, bg=BG_CARD, bd=1, highlightbackground=BORDER, highlightthickness=1)
-        sq_card.pack(side="left", padx=16, ipadx=10, ipady=10)
+        sq_card.pack(side="left", padx=10, ipadx=8, ipady=8)
         
-        sq_title = tk.Label(sq_card, text="SQPACK GAME LOADER", bg=BG_CARD, fg=ACCENT_LIGHT, font=FONT_SUB)
+        sq_title = tk.Label(sq_card, text="SQPACK SINGLE SHEET", bg=BG_CARD, fg=ACCENT_LIGHT, font=FONT_SUB)
         sq_title.pack(pady=(16, 6))
-        sq_desc = tk.Label(sq_card, text="Browse sheets directly from game repository files\n(automatically scans EXH/EXD sheets)", bg=BG_CARD, fg=TEXT_SEC, font=FONT_SMALL, wraplength=200)
+        sq_desc = tk.Label(sq_card, text="Browse and translate single dialogue sheets directly from FFXIV game repository files", bg=BG_CARD, fg=TEXT_SEC, font=FONT_SMALL, wraplength=180)
         sq_desc.pack(pady=(0, 20))
         
         FlatButton(sq_card, text="Select Mode", command=lambda: self._set_mode("sqpack"), accent=True).pack(pady=(0, 10))
 
+        # SQPACK BATCH Card
+        sq_batch_card = tk.Frame(options_frame, bg=BG_CARD, bd=1, highlightbackground=BORDER, highlightthickness=1)
+        sq_batch_card.pack(side="left", padx=10, ipadx=8, ipady=8)
+        
+        sq_b_title = tk.Label(sq_batch_card, text="SQPACK BATCH MT", bg=BG_CARD, fg=ACCENT_LIGHT, font=FONT_SUB)
+        sq_b_title.pack(pady=(16, 6))
+        sq_b_desc = tk.Label(sq_batch_card, text="Batch translate ALL dialogue sheets directly from FFXIV game files and save them", bg=BG_CARD, fg=TEXT_SEC, font=FONT_SMALL, wraplength=180)
+        sq_b_desc.pack(pady=(0, 20))
+        
+        FlatButton(sq_batch_card, text="Select Mode", command=lambda: self._set_mode("sqpack_batch"), accent=True).pack(pady=(0, 10))
+
         # MANUAL Option Card
         man_card = tk.Frame(options_frame, bg=BG_CARD, bd=1, highlightbackground=BORDER, highlightthickness=1)
-        man_card.pack(side="left", padx=16, ipadx=10, ipady=10)
+        man_card.pack(side="left", padx=10, ipadx=8, ipady=8)
 
-        man_title = tk.Label(man_card, text="MANUAL FILES", bg=BG_CARD, fg=ACCENT_LIGHT, font=FONT_SUB)
+        man_title = tk.Label(man_card, text="MANUAL SINGLE FILE", bg=BG_CARD, fg=ACCENT_LIGHT, font=FONT_SUB)
         man_title.pack(pady=(16, 6))
-        man_desc = tk.Label(man_card, text="Translate standalone .exh / .exd files\nextracted on your computer manually", bg=BG_CARD, fg=TEXT_SEC, font=FONT_SMALL, wraplength=200)
+        man_desc = tk.Label(man_card, text="Load and translate a single standalone EXH/EXD file pair extracted on your PC", bg=BG_CARD, fg=TEXT_SEC, font=FONT_SMALL, wraplength=180)
         man_desc.pack(pady=(0, 20))
 
         FlatButton(man_card, text="Select Mode", command=lambda: self._set_mode("manual"), accent=True).pack(pady=(0, 10))
 
         # MASS Option Card
         mass_card = tk.Frame(options_frame, bg=BG_CARD, bd=1, highlightbackground=BORDER, highlightthickness=1)
-        mass_card.pack(side="left", padx=16, ipadx=10, ipady=10)
+        mass_card.pack(side="left", padx=10, ipadx=8, ipady=8)
 
-        mass_title = tk.Label(mass_card, text="MASS TRANSLATOR", bg=BG_CARD, fg=ACCENT_LIGHT, font=FONT_SUB)
+        mass_title = tk.Label(mass_card, text="FILES BATCH MT", bg=BG_CARD, fg=ACCENT_LIGHT, font=FONT_SUB)
         mass_title.pack(pady=(16, 6))
-        mass_desc = tk.Label(mass_card, text="Batch translate entire folders of FFXIV files\nautomatically using the configured MT engines", bg=BG_CARD, fg=TEXT_SEC, font=FONT_SMALL, wraplength=200)
+        mass_desc = tk.Label(mass_card, text="Batch translate an entire folder containing standalone EXH/EXD files automatically", bg=BG_CARD, fg=TEXT_SEC, font=FONT_SMALL, wraplength=180)
         mass_desc.pack(pady=(0, 20))
 
         FlatButton(mass_card, text="Select Mode", command=lambda: self._set_mode("mass"), accent=True).pack(pady=(0, 10))
@@ -449,20 +460,22 @@ class InterpresonaApp(tk.Tk):
                 self._overlay_frame.destroy()
                 
                 # Apply visibility changes
+                self._manual_section.pack_forget()
+                self._game_section.pack_forget()
+                self._mass_section.pack_forget()
+                self._sqpack_batch_section.pack_forget()
+
                 if mode == "manual":
                     self._manual_section.pack(fill="x", before=self._translation_sep)
-                    self._game_section.pack_forget()
-                    self._mass_section.pack_forget()
                     self._status.set("Manual Files Mode loaded.", SUCCESS)
                 elif mode == "mass":
                     self._mass_section.pack(fill="x", before=self._translation_sep)
-                    self._manual_section.pack_forget()
-                    self._game_section.pack_forget()
-                    self._status.set("Mass Folder Translator Mode loaded.", SUCCESS)
+                    self._status.set("Files Batch MT Mode loaded.", SUCCESS)
+                elif mode == "sqpack_batch":
+                    self._sqpack_batch_section.pack(fill="x", before=self._translation_sep)
+                    self._status.set("SqPack Batch MT Mode loaded.", SUCCESS)
                 else:
                     self._game_section.pack(fill="x", before=self._translation_sep)
-                    self._manual_section.pack_forget()
-                    self._mass_section.pack_forget()
                     self._status.set("SqPack Game Loader Mode loaded.", SUCCESS)
         
         animate_fade()
@@ -477,7 +490,7 @@ class InterpresonaApp(tk.Tk):
         self._manual_section = tk.Frame(parent, bg=BG_MID)
         self._manual_section.pack(fill="x")
 
-        SectionLabel(self._manual_section, text="MANUAL FILES (.exh/.exd)").pack(anchor="w", padx=12, pady=(16, 4))
+        SectionLabel(self._manual_section, text="MANUAL SINGLE FILE").pack(anchor="w", padx=12, pady=(16, 4))
         tk.Label(self._manual_section, text="Schema file (.exh)", bg=BG_MID, fg=TEXT_SEC, font=FONT_SMALL).pack(anchor="w", **pad)
         
         self._exh_var = tk.StringVar(value="No file selected")
@@ -493,11 +506,11 @@ class InterpresonaApp(tk.Tk):
 
         FlatButton(self._manual_section, text="Load & Extract", command=self._load_and_extract, accent=True).pack(fill="x", padx=12, pady=(4, 12))
 
-        # Mass Folder Translator section wrapper
+        # Files Batch MT section wrapper
         self._mass_section = tk.Frame(parent, bg=BG_MID)
         self._mass_section.pack_forget()
 
-        SectionLabel(self._mass_section, text="MASS TRANSLATOR").pack(anchor="w", padx=12, pady=(16, 4))
+        SectionLabel(self._mass_section, text="FILES BATCH MT").pack(anchor="w", padx=12, pady=(16, 4))
         tk.Label(self._mass_section, text="Source folder containing files", bg=BG_MID, fg=TEXT_SEC, font=FONT_SMALL).pack(anchor="w", **pad)
         self._mass_src_var = tk.StringVar(value="No folder selected")
         tk.Label(self._mass_section, textvariable=self._mass_src_var, bg=BG_MID, fg=TEXT_DIM,
@@ -512,12 +525,38 @@ class InterpresonaApp(tk.Tk):
 
         FlatButton(self._mass_section, text="Run Batch Translate", command=self._run_mass_translate, accent=True).pack(fill="x", padx=12, pady=(4, 12))
 
+        # SqPack Batch MT section wrapper
+        self._sqpack_batch_section = tk.Frame(parent, bg=BG_MID)
+        self._sqpack_batch_section.pack_forget()
+
+        SectionLabel(self._sqpack_batch_section, text="SQPACK BATCH MT").pack(anchor="w", padx=12, pady=(16, 4))
+        tk.Label(self._sqpack_batch_section, text="Game directory", bg=BG_MID, fg=TEXT_SEC, font=FONT_SMALL).pack(anchor="w", padx=12)
+        self._sqb_game_dir_var = tk.StringVar(value="Not set")
+        tk.Label(self._sqpack_batch_section, textvariable=self._sqb_game_dir_var, bg=BG_MID, fg=TEXT_DIM,
+                 font=FONT_SMALL, wraplength=200, justify="left").pack(anchor="w", padx=12)
+        FlatButton(self._sqpack_batch_section, text="Browse Game Folder…", command=self._browse_sqb_game_dir).pack(fill="x", padx=12, pady=(4, 4))
+
+        tk.Label(self._sqpack_batch_section, text="Language", bg=BG_MID, fg=TEXT_SEC, font=FONT_SMALL).pack(anchor="w", padx=12, pady=(6, 0))
+        self._sqb_lang_var = tk.StringVar(value="en")
+        sqb_lang_frame = tk.Frame(self._sqpack_batch_section, bg=BG_MID)
+        sqb_lang_frame.pack(fill="x", padx=12, pady=(2, 4))
+        ttk.Combobox(sqb_lang_frame, textvariable=self._sqb_lang_var,
+                     values=["en", "ja", "de", "fr", "chs", "cht", "ko"],
+                     state="readonly", width=8, font=FONT_BODY).pack(side="left")
+
+        tk.Label(self._sqpack_batch_section, text="Output destination folder", bg=BG_MID, fg=TEXT_SEC, font=FONT_SMALL).pack(anchor="w", **pad)
+        self._sqb_out_var = tk.StringVar(value="No folder selected")
+        tk.Label(self._sqpack_batch_section, textvariable=self._sqb_out_var, bg=BG_MID, fg=TEXT_DIM,
+                 font=FONT_SMALL, wraplength=200, justify="left").pack(anchor="w", padx=12)
+        FlatButton(self._sqpack_batch_section, text="Select Output Folder…", command=self._browse_sqb_out).pack(fill="x", padx=12, pady=(4, 8))
+
+        FlatButton(self._sqpack_batch_section, text="Run SqPack Batch MT", command=self._run_sqpack_batch_translate, accent=True).pack(fill="x", padx=12, pady=(4, 12))
+
         # Game files loader mode section wrapper
         self._game_section = tk.Frame(parent, bg=BG_MID)
-        # Hidden by default until mode is chosen
         self._game_section.pack_forget()
 
-        SectionLabel(self._game_section, text="LOAD FROM GAME FILES").pack(anchor="w", padx=12, pady=(16, 4))
+        SectionLabel(self._game_section, text="SQPACK SINGLE SHEET").pack(anchor="w", padx=12, pady=(16, 4))
         tk.Label(self._game_section, text="Game directory", bg=BG_MID, fg=TEXT_SEC, font=FONT_SMALL).pack(anchor="w", padx=12)
         
         self._game_dir_var = tk.StringVar(value="Not set")
@@ -1059,6 +1098,138 @@ class InterpresonaApp(tk.Tk):
             self._mass_out_path = Path(p)
             self._mass_out_var.set(self._mass_out_path.name)
             self._log_msg(f"Mass Output Folder: {p}", "info")
+
+    def _browse_sqb_game_dir(self):
+        p = filedialog.askdirectory(title="Select FFXIV Game Directory (the folder containing 'game/')")
+        if p:
+            self._sqb_game_path = Path(p)
+            self._sqb_game_dir_var.set(self._sqb_game_path.name)
+            self._log_msg(f"SqPack Game Folder: {p}", "info")
+
+    def _browse_sqb_out(self):
+        p = filedialog.askdirectory(title="Select Output Destination Folder")
+        if p:
+            self._sqb_out_path = Path(p)
+            self._sqb_out_var.set(self._sqb_out_path.name)
+            self._log_msg(f"SqPack Batch Output Folder: {p}", "info")
+
+    def _run_sqpack_batch_translate(self):
+        game_dir = getattr(self, "_sqb_game_path", None)
+        out_dir = getattr(self, "_sqb_out_path", None)
+        lang = self._sqb_lang_var.get()
+        if not game_dir or not out_dir:
+            messagebox.showwarning("Missing folders", "Please select both game directory and output folders first.")
+            return
+
+        try:
+            translator = self._build_translator()
+        except ValueError as exc:
+            messagebox.showerror("Configuration Error", str(exc))
+            return
+
+        self._log_msg("Opening SqPack database...", "info")
+        try:
+            reader = SqPackReader.from_game_directory(game_dir)
+            raw_sheets = reader.list_exd_sheets()
+            # Filter dialogue sheets
+            sheets = [
+                s for s in raw_sheets
+                if any(x in s.lower() for x in ("quest", "talk", "text", "opening", "cutscene", "dawn", "addon", "chat", "bubble"))
+            ]
+        except Exception as exc:
+            messagebox.showerror("SqPack Error", f"Could not load game files: {exc}")
+            return
+
+        if not sheets:
+            messagebox.showinfo("No sheets", "No dialogue sheets found in root.exl.")
+            return
+
+        self._log_msg(f"Starting batch translation of {len(sheets)} SqPack sheet(s) to language '{lang}'...", "info")
+        self._status.set("SqPack Batch MT...", WARNING)
+
+        import re
+        technical_key_pat = re.compile(r"^[A-Z][A-Z0-9_]{4,80}$")
+
+        success_count = 0
+        for sheet_name in sheets:
+            self._log_msg(f"Processing sheet {sheet_name}...", "info")
+            
+            exh_path = SqPackReader.exh_path(sheet_name)
+            if not reader.file_exists(exh_path):
+                self._log_msg(f"  EXH schema file not found in SqPack: {exh_path}", "warning")
+                continue
+
+            try:
+                exh_bytes = reader.read_file(exh_path)
+                
+                # Check page count
+                from interpresona.core.parser import EXHParser
+                schema = EXHParser(exh_bytes).result
+                n_pages = len(schema.pages) if schema.pages else 1
+
+                exd_pages: list[bytes] = []
+                for page_idx in range(n_pages):
+                    page_bytes = None
+                    for candidate_lang in (lang, ""):
+                        candidate = SqPackReader.exd_path(sheet_name, page=page_idx, lang=candidate_lang)
+                        if reader.file_exists(candidate):
+                            page_bytes = reader.read_file(candidate)
+                            break
+                    if page_bytes is not None:
+                        exd_pages.append(page_bytes)
+                    else:
+                        break
+
+                if not exd_pages:
+                    self._log_msg(f"  No EXD page 0 files found for language {lang}", "warning")
+                    continue
+
+                pipeline = TranslationPipeline(exh_bytes, exd_pages)
+                records = pipeline.extract()
+
+                # Filter translatable targets (skipping technical IDs)
+                targets = []
+                for rec in records:
+                    text_str = rec.masked_text.strip()
+                    if technical_key_pat.match(text_str) or text_str.startswith("TEXT_") or text_str.startswith("KEY_"):
+                        continue
+                    if not rec.translated_text and not rec.errors:
+                        targets.append(rec)
+
+                if targets:
+                    self._log_msg(f"  Translating {len(targets)} string(s)...", "info")
+                    CHUNK = 20
+                    for chunk_start in range(0, len(targets), CHUNK):
+                        chunk = targets[chunk_start: chunk_start + CHUNK]
+                        texts = [r.masked_text for r in chunk]
+                        translated_list = translator.translate_batch(texts)
+                        for rec, translated in zip(chunk, translated_list):
+                            # Verify placeholders
+                            from interpresona.core.masker import validate_placeholders as _val
+                            ph_err = _val(rec.masked_text, translated, rec.placeholders)
+                            if ph_err:
+                                self._log_msg(f"    Row {rec.row_id}: placeholder mismatch — skipped", "warning")
+                            else:
+                                rec.translated_text = translated
+
+                # Save translated EXD pages back to output folder.
+                # Since sheet names can contain folders (e.g. quest/004/ManFst008_00448),
+                # flatten or create directories
+                safe_sheet_name = sheet_name.replace("/", "_")
+                page_data = pipeline.inject_all()
+                for page_id, binary in page_data.items():
+                    out_name = f"{safe_sheet_name}_{page_id}.exd"
+                    (Path(out_dir) / out_name).write_bytes(binary)
+                
+                # Save EXH Alongside
+                (Path(out_dir) / f"{safe_sheet_name}.exh").write_bytes(exh_bytes)
+                self._log_msg(f"  Successfully translated and saved {sheet_name}", "success")
+                success_count += 1
+            except Exception as exc:
+                self._log_msg(f"  Error processing sheet {sheet_name}: {exc}", "error")
+
+        self._log_msg(f"SqPack Batch translation completed. {success_count} / {len(sheets)} sheets translated.", "success")
+        self._status.set(f"SqPack Batch finished. {success_count} sheets saved.", SUCCESS)
 
     def _run_mass_translate(self):
         src_dir = getattr(self, "_mass_src_path", None)
