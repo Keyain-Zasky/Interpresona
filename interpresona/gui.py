@@ -1380,7 +1380,8 @@ class InterpresonaApp(tk.Tk):
             messagebox.showerror("Configuration Error", str(exc))
             return
 
-        exh_files = list(src_dir.glob("*.exh"))
+        # Scan for .exh files case-insensitively
+        exh_files = [f for f in src_dir.iterdir() if f.is_file() and f.suffix.lower() == ".exh"]
         if not exh_files:
             messagebox.showinfo("No files found", "No .exh schema files found in the source folder.")
             return
@@ -1400,17 +1401,21 @@ class InterpresonaApp(tk.Tk):
             self._mt_progress_var.set(f"Batch Translate: {exh_path.stem} ({i}/{len(exh_files)})")
             self.update()
             
-            # Look for matching exd pages
-            exd_pattern = f"{exh_path.stem}_*.exd"
-            exd_files = list(src_dir.glob(exd_pattern))
+            # Find matching .exd files case-insensitively
+            exh_stem_lower = exh_path.stem.lower()
+            exd_files = []
+            for f in src_dir.iterdir():
+                if f.is_file() and f.suffix.lower() == ".exd":
+                    f_stem_lower = f.stem.lower()
+                    if f_stem_lower == exh_stem_lower or f_stem_lower.startswith(exh_stem_lower + "_"):
+                        exd_files.append(f)
+
             if not exd_files:
-                # Try fallback matching file name without page suffixes
-                fallback_exd = src_dir / f"{exh_path.stem}.exd"
-                if fallback_exd.exists():
-                    exd_files = [fallback_exd]
-                else:
-                    self._log_msg(f"  Skipping {exh_path.name}: no matching .exd files found", "warning")
-                    continue
+                self._log_msg(f"  Skipping {exh_path.name}: no matching .exd files found", "warning")
+                continue
+
+            # Sort files by suffix pages if named like _0.exd, _1.exd
+            exd_files.sort(key=lambda x: x.name)
 
             self._log_msg(f"Translating sheet {exh_path.stem}...", "info")
             try:
