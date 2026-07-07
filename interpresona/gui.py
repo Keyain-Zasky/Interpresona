@@ -1339,7 +1339,7 @@ class InterpresonaApp(tk.Tk):
                     for chunk_start in range(0, len(targets), CHUNK):
                         chunk = targets[chunk_start: chunk_start + CHUNK]
                         texts = [r.masked_text for r in chunk]
-                        translated_list = translator.translate_batch(texts)
+                        translated_list = translator.translate(texts)
                         for rec, translated in zip(chunk, translated_list):
                             # Verify placeholders
                             from interpresona.core.masker import validate_placeholders as _val
@@ -1453,7 +1453,7 @@ class InterpresonaApp(tk.Tk):
                     for chunk_start in range(0, len(targets), CHUNK):
                         chunk = targets[chunk_start: chunk_start + CHUNK]
                         texts = [r.masked_text for r in chunk]
-                        translated_list = translator.translate_batch(texts)
+                        translated_list = translator.translate(texts)
                         for rec, translated in zip(chunk, translated_list):
                             # Verify placeholders
                             from interpresona.core.masker import validate_placeholders as _val
