@@ -1414,9 +1414,9 @@ class InterpresonaApp(tk.Tk):
             
             for entry in exh_dir.iterdir():
                 if entry.is_file() and entry.suffix.lower() == ".exd":
-                    entry_stem_lower = entry.name.lower()
+                    entry_stem_lower = entry.stem.lower() # Verify stem, not name with extension
                     # Check if matching sheet stem or stem + page (e.g. quest_0.exd)
-                    if entry_stem_lower.startswith(exh_stem_lower):
+                    if entry_stem_lower == exh_stem_lower or entry_stem_lower.startswith(exh_stem_lower + "_"):
                         exd_files.append(entry)
 
             if not exd_files:
