@@ -663,6 +663,9 @@ class InterpresonaApp(tk.Tk):
         self._tab_schema = self._tab_export
         self._tab_log = self._tab_export
 
+        # Pre-build schema widgets within the export tab frame container so they exist from start
+        self._build_schema_tab(self._tab_export)
+
         # Highlight first step
         self._select_step(0)
 
