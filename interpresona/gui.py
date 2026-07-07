@@ -1380,10 +1380,16 @@ class InterpresonaApp(tk.Tk):
             messagebox.showerror("Configuration Error", str(exc))
             return
 
-        # Scan for .exh files case-insensitively
-        exh_files = [f for f in src_dir.iterdir() if f.is_file() and f.suffix.lower() == ".exh"]
+        # Scan for .exh files case-insensitively, supporting recursive layout or nested folder structures
+        exh_files = []
+        for root, dirs, files in os.walk(str(src_dir)):
+            for f in files:
+                if f.lower().endswith(".exh"):
+                    exh_files.append(Path(root) / f)
+
         if not exh_files:
-            messagebox.showinfo("No files found", "No .exh schema files found in the source folder.")
+            self._log_msg(f"Scan directory: {src_dir} (scanned recursively)", "warning")
+            messagebox.showinfo("No files found", "No .exh schema files found (even recursively) in the source folder.")
             return
 
         self._nb.select(self._tab_mt)
@@ -1401,23 +1407,26 @@ class InterpresonaApp(tk.Tk):
             self._mt_progress_var.set(f"Batch Translate: {exh_path.stem} ({i}/{len(exh_files)})")
             self.update()
             
-            # Find matching .exd files case-insensitively
+            # Find matching .exd files case-insensitively in the same directory as the EXH
+            exh_dir = exh_path.parent
             exh_stem_lower = exh_path.stem.lower()
             exd_files = []
-            for f in src_dir.iterdir():
-                if f.is_file() and f.suffix.lower() == ".exd":
-                    f_stem_lower = f.stem.lower()
-                    if f_stem_lower == exh_stem_lower or f_stem_lower.startswith(exh_stem_lower + "_"):
-                        exd_files.append(f)
+            
+            for entry in exh_dir.iterdir():
+                if entry.is_file() and entry.suffix.lower() == ".exd":
+                    entry_stem_lower = entry.name.lower()
+                    # Check if matching sheet stem or stem + page (e.g. quest_0.exd)
+                    if entry_stem_lower.startswith(exh_stem_lower):
+                        exd_files.append(entry)
 
             if not exd_files:
-                self._log_msg(f"  Skipping {exh_path.name}: no matching .exd files found", "warning")
+                self._log_msg(f"  Skipping {exh_path.name}: no matching .exd files found in {exh_dir}", "warning")
                 continue
 
             # Sort files by suffix pages if named like _0.exd, _1.exd
             exd_files.sort(key=lambda x: x.name)
 
-            self._log_msg(f"Translating sheet {exh_path.stem}...", "info")
+            self._log_msg(f"Translating sheet {exh_path.name} from {exh_dir.name}...", "info")
             try:
                 exh_bytes = exh_path.read_bytes()
                 exd_pages = [f.read_bytes() for f in exd_files]
