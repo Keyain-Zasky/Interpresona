@@ -1264,8 +1264,8 @@ class InterpresonaApp(tk.Tk):
             messagebox.showinfo("No sheets", "No dialogue sheets found in root.exl.")
             return
 
-        # Switch to Auto-Translate tab so the user can visually track progress
-        self._nb.select(self._tab_mt)
+        # Switch to Auto-Translate step so the user can visually track progress
+        self._select_step(2)
 
         self._log_msg(f"Starting batch translation of {len(sheets)} SqPack sheet(s) to language '{lang}'...", "info")
         self._status.set("SqPack Batch MT...", WARNING)
@@ -1392,7 +1392,7 @@ class InterpresonaApp(tk.Tk):
             messagebox.showinfo("No files found", "No .exh schema files found (even recursively) in the source folder.")
             return
 
-        self._nb.select(self._tab_mt)
+        self._select_step(2)
         self._log_msg(f"Starting batch translation of {len(exh_files)} sheet(s)...", "info")
         self._status.set("Batch translating...", WARNING)
         self._mt_progress_bar["maximum"] = len(exh_files)
