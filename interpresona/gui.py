@@ -591,41 +591,154 @@ class InterpresonaApp(tk.Tk):
 
         tk.Frame(parent, bg=BORDER, height=1).pack(fill="x", padx=12, pady=8)
 
-        SectionLabel(parent, text="SESSION").pack(anchor="w", padx=12, pady=(4, 4))
-        FlatButton(parent, text="Save Session...", command=self._save_session).pack(fill="x", padx=12, pady=4)
-        FlatButton(parent, text="Load Session...", command=self._load_session).pack(fill="x", padx=12, pady=4)
-
         # Filler
         tk.Frame(parent, bg=BG_MID).pack(fill="both", expand=True)
 
         # Version footer
-        tk.Label(parent, text="Interpresona v1.2.0  |  Standalone", bg=BG_MID, fg=TEXT_DIM, font=FONT_SMALL).pack(pady=10)
+        tk.Label(parent, text="Interpresona v1.7.0  |  Step-by-step Wizard", bg=BG_MID, fg=TEXT_DIM, font=FONT_SMALL).pack(pady=10)
 
     # ------------------------------------------------------------------
     # Main content area
     # ------------------------------------------------------------------
     def _build_main(self, parent: tk.Frame):
-        # Notebook (tabs)
+        # ── Step Indicator Panel ─────────────────────────────────────────
+        self._steps_frame = tk.Frame(parent, bg=BG_MID, padx=12, pady=10)
+        self._steps_frame.pack(fill="x", padx=10, pady=(10, 4))
+        
+        self._step_labels = []
+        steps_data = [
+            ("1. LOAD / BROWSE", "Select game folder or files", 0),
+            ("2. REVIEW STRINGS", "Browse & edit dialogue table", 1),
+            ("3. AUTO-TRANSLATE", "Run machine translation", 2),
+            ("4. EXPORT & SAVE", "Export translated data", 3),
+        ]
+        
+        for name, desc, tab_idx in steps_data:
+            step_box = tk.Frame(self._steps_frame, bg=BG_CARD, highlightbackground=BORDER, highlightthickness=1, cursor="hand2")
+            step_box.pack(side="left", fill="x", expand=True, padx=4)
+            
+            lbl_title = tk.Label(step_box, text=name, bg=BG_CARD, fg=TEXT_SEC, font=("Segoe UI", 10, "bold"))
+            lbl_title.pack(anchor="w", padx=10, pady=(6, 2))
+            
+            lbl_desc = tk.Label(step_box, text=desc, bg=BG_CARD, fg=TEXT_DIM, font=("Segoe UI", 8))
+            lbl_desc.pack(anchor="w", padx=10, pady=(0, 6))
+            
+            # Click handles to switch tabs
+            for w in (step_box, lbl_title, lbl_desc):
+                w.bind("<Button-1>", lambda e, idx=tab_idx: self._select_step(idx))
+            
+            self._step_labels.append((tab_idx, step_box, lbl_title, lbl_desc))
+
+        # Divider
+        tk.Frame(parent, bg=BORDER, height=1).pack(fill="x", padx=10, pady=4)
+
+        # Notebook (tabs) - hide standard tab headers, use steps for navigation
         nb_frame = tk.Frame(parent, bg=BG_DARK)
         nb_frame.pack(fill="both", expand=True)
 
-        self._nb = ttk.Notebook(nb_frame)
+        # Custom style to hide notebook tabs entirely
+        style = ttk.Style(self)
+        style.layout("NoTabs.TNotebook", []) # Hides tabs
+        
+        self._nb = ttk.Notebook(nb_frame, style="NoTabs.TNotebook")
         self._nb.pack(fill="both", expand=True, padx=10, pady=10)
 
-        self._tab_strings = tk.Frame(self._nb, bg=BG_DARK)
-        self._tab_mt      = tk.Frame(self._nb, bg=BG_DARK)
-        self._tab_schema  = tk.Frame(self._nb, bg=BG_DARK)
-        self._tab_log     = tk.Frame(self._nb, bg=BG_DARK)
+        # Rearrange tabs: 0 = Load Info, 1 = Strings, 2 = Auto-Translate, 3 = Schema/Log
+        self._tab_loadinfo = tk.Frame(self._nb, bg=BG_DARK)
+        self._tab_strings  = tk.Frame(self._nb, bg=BG_DARK)
+        self._tab_mt       = tk.Frame(self._nb, bg=BG_DARK)
+        self._tab_export   = tk.Frame(self._nb, bg=BG_DARK)
 
-        self._nb.add(self._tab_strings, text="  Strings  ")
-        self._nb.add(self._tab_mt,      text="  Auto-Translate  ")
-        self._nb.add(self._tab_schema,  text="  Schema  ")
-        self._nb.add(self._tab_log,     text="  Log  ")
+        self._nb.add(self._tab_loadinfo, text="  Load  ")
+        self._nb.add(self._tab_strings,  text="  Strings  ")
+        self._nb.add(self._tab_mt,       text="  Auto-Translate  ")
+        self._nb.add(self._tab_export,   text="  Export  ")
 
+        self._build_loadinfo_tab(self._tab_loadinfo)
         self._build_strings_tab(self._tab_strings)
         self._build_mt_tab(self._tab_mt)
-        self._build_schema_tab(self._tab_schema)
-        self._build_log_tab(self._tab_log)
+        self._build_export_tab(self._tab_export)
+
+        # Add schema/logs to a standalone bottom section or within tab views to keep simple
+        self._tab_schema = self._tab_export
+        self._tab_log = self._tab_export
+
+        # Highlight first step
+        self._select_step(0)
+
+    def _select_step(self, active_idx: int):
+        self._nb.select(active_idx)
+        
+        # Color coding for active steps
+        for tab_idx, step_box, lbl_title, lbl_desc in self._step_labels:
+            if tab_idx == active_idx:
+                step_box.config(bg=ACCENT, highlightbackground=ACCENT)
+                lbl_title.config(bg=ACCENT, fg=TEXT_PRI)
+                lbl_desc.config(bg=ACCENT, fg=TEXT_PRI)
+            else:
+                step_box.config(bg=BG_CARD, highlightbackground=BORDER)
+                lbl_title.config(bg=BG_CARD, fg=TEXT_SEC)
+                lbl_desc.config(bg=BG_CARD, fg=TEXT_DIM)
+
+    def _build_loadinfo_tab(self, parent: tk.Frame):
+        container = tk.Frame(parent, bg=BG_DARK, padx=30, pady=30)
+        container.pack(fill="both", expand=True)
+
+        tk.Label(container, text="STEP 1: LOAD YOUR DATA SOURCE", bg=BG_DARK, fg=ACCENT_LIGHT, font=("Segoe UI", 16, "bold")).pack(anchor="w", pady=(0, 10))
+        tk.Label(container, text="Please select your desired mode of operation using the 'Switch Mode' button in the top right, then configure your loaded paths in the left sidebar panel.", bg=BG_DARK, fg=TEXT_SEC, font=FONT_BODY, justify="left", wraplength=700).pack(anchor="w", pady=(0, 24))
+
+        card = tk.Frame(container, bg=BG_CARD, padx=20, pady=20, bd=1, highlightbackground=BORDER, highlightthickness=1)
+        card.pack(fill="x", pady=10)
+
+        tk.Label(card, text="Current Session Status", bg=BG_CARD, fg=TEXT_PRI, font=FONT_SUB).pack(anchor="w", pady=(0, 12))
+        
+        self._load_status_lbl = tk.Label(card, text="No sheet or files loaded. Select a source on the left sidebar.", bg=BG_CARD, fg=WARNING, font=FONT_BODY, justify="left")
+        self._load_status_lbl.pack(anchor="w")
+
+        FlatButton(container, text="Proceed to Step 2: Review Strings →", command=lambda: self._select_step(1), accent=True).pack(anchor="w", pady=30)
+
+    def _build_export_tab(self, parent: tk.Frame):
+        container = tk.Frame(parent, bg=BG_DARK, padx=30, pady=30)
+        container.pack(fill="both", expand=True)
+
+        tk.Label(container, text="STEP 4: SAVE & EXPORT RESULTS", bg=BG_DARK, fg=ACCENT_LIGHT, font=("Segoe UI", 16, "bold")).pack(anchor="w", pady=(0, 10))
+        tk.Label(container, text="Finalize your translation work by exporting to CSV formats, saving your custom database session, or reconstructing translation-injected EXD binary sheets.", bg=BG_DARK, fg=TEXT_SEC, font=FONT_BODY, justify="left", wraplength=700).pack(anchor="w", pady=(0, 24))
+
+        grid = tk.Frame(container, bg=BG_DARK)
+        grid.pack(fill="x", pady=10)
+
+        # Re-pack outputs in a modern layout grid
+        c1 = tk.Frame(grid, bg=BG_CARD, padx=20, pady=16, bd=1, highlightbackground=BORDER, highlightthickness=1)
+        c1.grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
+        tk.Label(c1, text="Original Sheets / CSVs", bg=BG_CARD, fg=TEXT_PRI, font=FONT_SUB).pack(anchor="w", pady=(0, 8))
+        FlatButton(c1, text="Export CSV for MT…", command=self._export_csv).pack(fill="x", pady=4)
+        FlatButton(c1, text="Import Translated CSV…", command=self._import_csv).pack(fill="x", pady=4)
+
+        c2 = tk.Frame(grid, bg=BG_CARD, padx=20, pady=16, bd=1, highlightbackground=BORDER, highlightthickness=1)
+        c2.grid(row=0, column=1, sticky="nsew", padx=8, pady=8)
+        tk.Label(c2, text="Binary Injection EXD", bg=BG_CARD, fg=TEXT_PRI, font=FONT_SUB).pack(anchor="w", pady=(0, 8))
+        FlatButton(c2, text="Save Translated EXD...", command=self._save_exd, accent=True).pack(fill="x", pady=4)
+
+        c3 = tk.Frame(grid, bg=BG_CARD, padx=20, pady=16, bd=1, highlightbackground=BORDER, highlightthickness=1)
+        c3.grid(row=0, column=2, sticky="nsew", padx=8, pady=8)
+        tk.Label(c3, text="Session Database", bg=BG_CARD, fg=TEXT_PRI, font=FONT_SUB).pack(anchor="w", pady=(0, 8))
+        FlatButton(c3, text="Save Session...", command=self._save_session).pack(fill="x", pady=4)
+        FlatButton(c3, text="Load Session...", command=self._load_session).pack(fill="x", pady=4)
+
+        # Log & Schema toggle frame
+        logs_card = tk.Frame(container, bg=BG_CARD, padx=16, pady=16, bd=1, highlightbackground=BORDER, highlightthickness=1)
+        logs_card.pack(fill="both", expand=True, pady=16)
+        tk.Label(logs_card, text="Console logs & diagnostic trace output:", bg=BG_CARD, fg=TEXT_SEC, font=FONT_SMALL).pack(anchor="w")
+        
+        self._log = scrolledtext.ScrolledText(
+            logs_card, bg=BG_DARK, fg=TEXT_PRI, insertbackground=TEXT_PRI,
+            font=FONT_MONO, state="disabled", relief="flat", height=8
+        )
+        self._log.pack(fill="both", expand=True, pady=(6, 0))
+        self._log.tag_config("info",    foreground=TEXT_SEC)
+        self._log.tag_config("success", foreground=SUCCESS)
+        self._log.tag_config("warning", foreground=WARNING)
+        self._log.tag_config("error",   foreground=ERROR_COL)
 
     # ------------------------------------------------------------------
     # Strings tab
@@ -1062,6 +1175,13 @@ class InterpresonaApp(tk.Tk):
                 + (f" ({sheet})" if sheet else ""), "success"
             )
             self._status.set(f"Session loaded: {Path(path).name}", SUCCESS)
+            
+            # Step-by-step GUI improvements: update load status panel and advance step
+            self._load_status_lbl.config(
+                text=f"✓ LOADED SESSION DATABASE:\n- File: {Path(path).name}\n- Associated Sheet: {sheet or 'standalone'}\n- String Count: {len(self._pipeline.records)}\nReady to translate.",
+                fg=SUCCESS
+            )
+            self._select_step(1)
         except Exception as exc:
             self._log_msg(f"Load session error: {exc}", "error")
             messagebox.showerror("Load Error", str(exc))
@@ -1467,6 +1587,13 @@ class InterpresonaApp(tk.Tk):
                 f"Extracted {len(records)} strings from '{sheet_name}' "
                 f"({pages_loaded} page(s))", "success"
             )
+            
+            # Step-by-step GUI improvements: update load status panel and advance step
+            self._load_status_lbl.config(
+                text=f"✓ LOADED: '{sheet_name}' ({lang})\n- Total Pages: {pages_loaded}\n- String Cells Extracted: {len(records)}\nReady to translate.",
+                fg=SUCCESS
+            )
+            self._select_step(1)
         except Exception as exc:
             self._status.set(f"Parse error: {exc}", ERROR_COL)
             self._log_msg(f"Pipeline error: {exc}", "error")
@@ -1497,6 +1624,13 @@ class InterpresonaApp(tk.Tk):
                 f"Extracted {len(records)} translatable string cells from "
                 f"{self._exd_path.name}", "success"
             )
+            
+            # Step-by-step GUI improvements: update load status panel and advance step
+            self._load_status_lbl.config(
+                text=f"✓ LOADED MANUAL FILES:\n- Schema: {self._exh_path.name}\n- Data: {self._exd_path.name}\n- Strings: {len(records)}",
+                fg=SUCCESS
+            )
+            self._select_step(1)
         except Exception as exc:
             self._status.set(f"Error: {exc}", ERROR_COL)
             self._log_msg(f"Load error: {exc}", "error")
