@@ -131,6 +131,15 @@ def test_mask_control_codes_roundtrip():
     assert restored == raw, f"Roundtrip failed:\n  exp={raw!r}\n  got={restored!r}"
 
 
+def test_mask_consecutive_placeholders():
+    raw = make_character_name_control() + make_color_control(1) + make_reset_control()
+    result = mask(raw)
+    # Check that spaces were inserted between adjacent placeholders
+    assert result.text == "⟪0⟫ ⟪1⟫ ⟪2⟫"
+    restored = unmask(result.text, result.placeholders)
+    assert restored == raw
+
+
 def test_mask_placeholder_at_start():
     raw = make_character_name_control() + b" joined the battle!"
     result = mask(raw)

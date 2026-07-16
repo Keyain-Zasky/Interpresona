@@ -94,13 +94,19 @@ def mask(raw: bytes) -> MaskedString:
     placeholders: dict[int, bytes] = {}
     counter = 0
 
-    for seg in segments:
+    for i, seg in enumerate(segments):
         if seg.kind == "text":
             parts.append(seg.value.decode("utf-8", errors="replace"))
         else:
             token = _PLACEHOLDER_FMT.format(n=counter)
             placeholders[counter] = seg.value
-            parts.append(token)
+            
+            # If the previous segment was ALSO a placeholder, insert a space between them
+            # to prevent MT engines from deleting/corrupting consecutive placeholders
+            if i > 0 and segments[i - 1].kind != "text":
+                parts.append(" " + token)
+            else:
+                parts.append(token)
             counter += 1
 
     return MaskedString(text="".join(parts), placeholders=placeholders)
@@ -125,6 +131,17 @@ def unmask(translated: str, placeholders: dict[int, bytes]) -> bytes:
             )
         # Append text before this placeholder
         text_chunk = translated[last: m.start()]
+        
+        # If we inserted an artificial space between consecutive placeholders, strip it now
+        # so that the original byte layout has no unwanted spaces
+        if text_chunk.endswith(" ") and last > 0:
+            # Check if the previous token was a placeholder
+            # By checking if the character before the space was a closing bracket '⟫'
+            # and matching the placeholder structure
+            before_space = translated[last: m.start() - 1]
+            if before_space.endswith("⟫"):
+                text_chunk = text_chunk[:-1]
+                
         result.extend(text_chunk.encode("utf-8"))
         # Append original control code bytes
         result.extend(placeholders[n])
