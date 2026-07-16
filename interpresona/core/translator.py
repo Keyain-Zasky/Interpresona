@@ -279,7 +279,7 @@ class MockTranslator(BaseTranslator):
             # Only transform plain text — leave placeholder tokens untouched
             # Split on ⟪...⟫ tokens and transform non-token parts
             import re
-            _TOKEN = re.compile(r"(⟪VAR_\d+⟫)")
+            _TOKEN = re.compile(r"(⟪\d+⟫)")
             parts = _TOKEN.split(text)
             transformed = []
             for part in parts:

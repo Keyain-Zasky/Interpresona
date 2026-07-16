@@ -103,9 +103,9 @@ def test_masker_roundtrip_with_control_codes():
         make_reset_control()
     )
     masked = mask(raw)
-    assert "⟪VAR_0⟫" in masked.text
-    assert "⟪VAR_1⟫" in masked.text
-    assert "⟪VAR_2⟫" in masked.text
+    assert "⟪0⟫" in masked.text
+    assert "⟪1⟫" in masked.text
+    assert "⟪2⟫" in masked.text
     assert len(masked.placeholders) == 3
 
     restored = unmask(masked.text, masked.placeholders)

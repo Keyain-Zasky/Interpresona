@@ -18,9 +18,9 @@ from typing import Optional
 
 from .parser import decode_varint
 
-# Placeholder format:  ⟪VAR_n⟫   (uses Unicode brackets unlikely to appear in text)
-_PLACEHOLDER_RE = re.compile(r"⟪VAR_(\d+)⟫")
-_PLACEHOLDER_FMT = "⟪VAR_{n}⟫"
+# Placeholder format:  ⟪n⟫   (uses Unicode brackets unlikely to appear in text)
+_PLACEHOLDER_RE = re.compile(r"⟪(\d+)⟫")
+_PLACEHOLDER_FMT = "⟪{n}⟫"
 
 
 @dataclass
@@ -120,7 +120,7 @@ def unmask(translated: str, placeholders: dict[int, bytes]) -> bytes:
         n = int(m.group(1))
         if n not in placeholders:
             raise ValueError(
-                f"unmask: placeholder ⟪VAR_{n}⟫ not found in map "
+                f"unmask: placeholder ⟪{n}⟫ not found in map "
                 f"(MT engine may have altered or deleted it)"
             )
         # Append text before this placeholder
@@ -147,7 +147,7 @@ def validate_placeholders(translated: str, expected: dict[int, bytes]) -> list[s
     missing = expected_indices - found_indices
     extra = found_indices - expected_indices
     for n in sorted(missing):
-        errors.append(f"Placeholder ⟪VAR_{n}⟫ was removed by the MT engine")
+        errors.append(f"Placeholder ⟪{n}⟫ was removed by the MT engine")
     for n in sorted(extra):
-        errors.append(f"Unknown placeholder ⟪VAR_{n}⟫ introduced by the MT engine")
+        errors.append(f"Unknown placeholder ⟪{n}⟫ introduced by the MT engine")
     return errors
