@@ -88,10 +88,28 @@ class DeepLTranslator(BaseTranslator):
             self._endpoint = "https://api.deepl.com/v2/translate"
 
     def translate(self, texts: list[str]) -> list[str]:
-        results: list[str] = []
-        for i in range(0, len(texts), self.BATCH_SIZE):
-            batch = texts[i: i + self.BATCH_SIZE]
-            results.extend(self._translate_batch(batch))
+        # Filter out indices with no translatable content (pure placeholders, punctuation)
+        import re
+        results = [None] * len(texts)
+        pending_indices = []
+        pending_batch = []
+        
+        for idx, text in enumerate(texts):
+            cleaned = re.sub(r"⟪\d+⟫", "", text).strip()
+            if not cleaned or re.match(r"^[ \t\r\n.,;:!?'\"`~@#$%^&*()_+={}\[\]|\\<>\-※\ue000-\ue0ff]*$", cleaned):
+                results[idx] = text
+            else:
+                pending_indices.append(idx)
+                pending_batch.append(text)
+                
+        if pending_batch:
+            translated_results = []
+            for i in range(0, len(pending_batch), self.BATCH_SIZE):
+                batch = pending_batch[i: i + self.BATCH_SIZE]
+                translated_results.extend(self._translate_batch(batch))
+            for idx, trans in zip(pending_indices, translated_results):
+                results[idx] = trans
+                
         return results
 
     def _translate_batch(self, texts: list[str]) -> list[str]:
@@ -172,7 +190,16 @@ class LibreTranslateTranslator(BaseTranslator):
     def translate(self, texts: list[str]) -> list[str]:
         results = []
         for i, text in enumerate(texts):
-            results.append(self._translate_one(text))
+            # If the text consists purely of placeholders, spaces, and punctuation symbols,
+            # we do not need to send it to the MT engine (it would likely get corrupted or return '⟪').
+            # We simply return the input string unmodified.
+            import re
+            cleaned = re.sub(r"⟪\d+⟫", "", text).strip()
+            # If nothing remains except punctuation/spaces, bypass translation
+            if not cleaned or re.match(r"^[ \t\r\n.,;:!?'\"`~@#$%^&*()_+={}\[\]|\\<>\-※\ue000-\ue0ff]*$", cleaned):
+                results.append(text)
+            else:
+                results.append(self._translate_one(text))
             
             # Periodically allow Tkinter to refresh its window messages and draw updates 
             # to prevent Windows from marking the app as "Not Responding" during long loops
