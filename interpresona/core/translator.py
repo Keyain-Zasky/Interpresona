@@ -117,7 +117,11 @@ class DeepLTranslator(BaseTranslator):
             method="POST",
         )
         try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            import ssl
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            with urllib.request.urlopen(req, context=ctx, timeout=30) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 return [item["text"] for item in data["translations"]]
         except urllib.error.HTTPError as exc:
@@ -193,7 +197,11 @@ class LibreTranslateTranslator(BaseTranslator):
             method="POST",
         )
         try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            import ssl
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            with urllib.request.urlopen(req, context=ctx, timeout=30) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 return data["translatedText"]
         except urllib.error.HTTPError as exc:
