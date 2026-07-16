@@ -180,6 +180,7 @@ class LibreTranslateTranslator(BaseTranslator):
         return results
 
     def _translate_one(self, text: str) -> str:
+        # Mode 1: Standard LibreTranslate POST JSON API
         payload = {
             "q": text,
             "source": self._source,
@@ -190,25 +191,59 @@ class LibreTranslateTranslator(BaseTranslator):
             payload["api_key"] = self._api_key
 
         body = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(
+        req_post = urllib.request.Request(
             f"{self._url}/translate",
             data=body,
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+            },
             method="POST",
         )
+
+        import ssl
+        ctx = ssl._create_unverified_context()
+
         try:
-            import ssl
-            ctx = ssl.create_default_context()
-            ctx.check_hostname = False
-            ctx.verify_mode = ssl.CERT_NONE
-            with urllib.request.urlopen(req, context=ctx, timeout=30) as resp:
+            with urllib.request.urlopen(req_post, context=ctx, timeout=30) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 return data["translatedText"]
-        except urllib.error.HTTPError as exc:
-            body_err = exc.read().decode("utf-8", errors="replace")
-            raise TranslationError(
-                f"LibreTranslate HTTP {exc.code}: {body_err[:200]}"
-            ) from exc
+        except (urllib.error.HTTPError, urllib.error.URLError) as exc:
+            # Check if we should fallback to Mode 2 (GET URL Mode)
+            # 405 Method Not Allowed or 400 Bad Request usually indicate custom bridge or wrong API format
+            is_fallback_error = False
+            if isinstance(exc, urllib.error.HTTPError) and exc.code in (400, 403, 405):
+                is_fallback_error = True
+            elif not isinstance(exc, urllib.error.HTTPError):
+                # Network or SSL issues might not support fallback, but we can try
+                is_fallback_error = False
+
+            if not is_fallback_error:
+                # Re-raise standard error if it is a real connection/auth issue
+                body_err = ""
+                if isinstance(exc, urllib.error.HTTPError):
+                    body_err = exc.read().decode("utf-8", errors="replace")[:200]
+                raise TranslationError(f"LibreTranslate API failed: {exc} {body_err}") from exc
+
+            # Mode 2: GET URL Mode (GET /translate?text=...&from=...&to=...)
+            query = urllib.parse.urlencode({
+                "text": text,
+                "from": self._source,
+                "to": self._target
+            })
+            req_get = urllib.request.Request(
+                f"{self._url}/translate?{query}",
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+                },
+                method="GET",
+            )
+            try:
+                with urllib.request.urlopen(req_get, context=ctx, timeout=30) as resp:
+                    # Renders directly as plain text (e.g. "Ciao")
+                    return resp.read().decode("utf-8").strip()
+            except Exception as get_exc:
+                raise TranslationError(f"LibreTranslate both POST and GET fallback failed. GET error: {get_exc}") from get_exc
         except Exception as exc:
             raise TranslationError(f"LibreTranslate request failed: {exc}") from exc
 
