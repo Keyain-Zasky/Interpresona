@@ -1343,7 +1343,7 @@ class InterpresonaApp(tk.Tk):
                         for rec, translated in zip(chunk, translated_list):
                             # Verify placeholders
                             from interpresona.core.masker import validate_placeholders as _val
-                            ph_err = _val(rec.masked_text, translated, rec.placeholders)
+                            ph_err = _val(translated, rec.placeholders)
                             if ph_err:
                                 self._log_msg(f"    Row {rec.row_id}: placeholder mismatch — skipped", "warning")
                             else:
@@ -1457,7 +1457,7 @@ class InterpresonaApp(tk.Tk):
                         for rec, translated in zip(chunk, translated_list):
                             # Verify placeholders
                             from interpresona.core.masker import validate_placeholders as _val
-                            ph_err = _val(rec.masked_text, translated, rec.placeholders)
+                            ph_err = _val(translated, rec.placeholders)
                             if ph_err:
                                 self._log_msg(f"    Row {rec.row_id}: placeholder mismatch — skipped", "warning")
                             else:
