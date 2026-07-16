@@ -961,7 +961,7 @@ class InterpresonaApp(tk.Tk):
 
         tk.Label(self._deepl_frame, text="Target lang", bg=BG_CARD,
                  fg=TEXT_SEC, font=FONT_SMALL).grid(row=2, column=0, sticky="w", pady=(4, 0))
-        self._deepl_tgt_var = tk.StringVar(value="IT")
+        self._deepl_tgt_var = tk.StringVar(value="EN-GB")
         tk.Entry(self._deepl_frame, textvariable=self._deepl_tgt_var,
                  bg=BG_MID, fg=TEXT_PRI, insertbackground=TEXT_PRI,
                  relief="flat", font=FONT_BODY, width=8).grid(row=2, column=1, sticky="w",
@@ -971,7 +971,7 @@ class InterpresonaApp(tk.Tk):
         self._libre_frame = tk.Frame(parent, bg=BG_CARD, padx=14, pady=10)
         tk.Label(self._libre_frame, text="LibreTranslate URL", bg=BG_CARD,
                  fg=TEXT_SEC, font=FONT_SMALL).grid(row=0, column=0, sticky="w")
-        self._libre_url_var = tk.StringVar(value="https://translate.systemofagamer.it")
+        self._libre_url_var = tk.StringVar(value="https://libretranslate.com")
         tk.Entry(self._libre_frame, textvariable=self._libre_url_var,
                  bg=BG_MID, fg=TEXT_PRI, insertbackground=TEXT_PRI,
                  relief="flat", font=FONT_MONO, width=38).grid(row=0, column=1, padx=(10, 0), ipady=3)
@@ -991,7 +991,7 @@ class InterpresonaApp(tk.Tk):
                                                                 padx=(10, 0), pady=(4, 0), ipady=3)
         tk.Label(self._libre_frame, text="Target lang", bg=BG_CARD,
                  fg=TEXT_SEC, font=FONT_SMALL).grid(row=3, column=0, sticky="w", pady=(4, 0))
-        self._libre_tgt_var = tk.StringVar(value="it")
+        self._libre_tgt_var = tk.StringVar(value="en")
         tk.Entry(self._libre_frame, textvariable=self._libre_tgt_var,
                  bg=BG_MID, fg=TEXT_PRI, insertbackground=TEXT_PRI,
                  relief="flat", font=FONT_BODY, width=8).grid(row=3, column=1, sticky="w",
