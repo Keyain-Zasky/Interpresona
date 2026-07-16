@@ -1111,7 +1111,7 @@ class InterpresonaApp(tk.Tk):
             self._mt_progress_var.set(
                 f"Translating... {min(chunk_start + CHUNK, total)}/{total} ({progress_pct}%)"
             )
-            self.update_idletasks()
+            self.update()
 
         self._mt_progress_var.set(f"Done. {total} strings processed.")
         self._populate_strings_table(self._pipeline.records)
