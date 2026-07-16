@@ -118,9 +118,7 @@ class DeepLTranslator(BaseTranslator):
         )
         try:
             import ssl
-            ctx = ssl.create_default_context()
-            ctx.check_hostname = False
-            ctx.verify_mode = ssl.CERT_NONE
+            ctx = ssl._create_unverified_context()
             with urllib.request.urlopen(req, context=ctx, timeout=30) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 return [item["text"] for item in data["translations"]]
@@ -175,6 +173,18 @@ class LibreTranslateTranslator(BaseTranslator):
         results = []
         for i, text in enumerate(texts):
             results.append(self._translate_one(text))
+            
+            # Periodically allow Tkinter to refresh its window messages and draw updates 
+            # to prevent Windows from marking the app as "Not Responding" during long loops
+            try:
+                import tkinter as tk
+                # Get the active tk root instance if it exists and update it
+                root = tk._default_root
+                if root:
+                    root.update()
+            except Exception:
+                pass
+                
             if i < len(texts) - 1 and self._delay > 0:
                 time.sleep(self._delay)
         return results
@@ -205,7 +215,7 @@ class LibreTranslateTranslator(BaseTranslator):
         ctx = ssl._create_unverified_context()
 
         try:
-            with urllib.request.urlopen(req_post, context=ctx, timeout=30) as resp:
+            with urllib.request.urlopen(req_post, context=ctx, timeout=5) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 return data["translatedText"]
         except (urllib.error.HTTPError, urllib.error.URLError) as exc:
@@ -239,7 +249,7 @@ class LibreTranslateTranslator(BaseTranslator):
                 method="GET",
             )
             try:
-                with urllib.request.urlopen(req_get, context=ctx, timeout=30) as resp:
+                with urllib.request.urlopen(req_get, context=ctx, timeout=5) as resp:
                     # Renders directly as plain text (e.g. "Ciao")
                     return resp.read().decode("utf-8").strip()
             except Exception as get_exc:
