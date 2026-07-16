@@ -16,6 +16,7 @@ from typing import Optional
 
 # Add the project root to the path so we can import the core package
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from interpresona import __version__
 from interpresona.core.pipeline import TranslationPipeline, ExtractionRecord
 from interpresona.core.masker import validate_placeholders as _validate_ph
 from interpresona.core.sqpack import SqPackReader
@@ -215,6 +216,45 @@ class InterpresonaApp(tk.Tk):
         self._setup_styles()
         self._build_ui()
         self._show_startup_overlay()
+
+        # Run autoupdater in a background thread to prevent startup freezes
+        import threading
+        threading.Thread(target=self._check_for_updates, daemon=True).start()
+
+    def _check_for_updates(self):
+        try:
+            import urllib.request
+            import urllib.parse
+            import ssl
+            import json
+            
+            url = "https://api.github.com/repos/Keyain-Zasky/Interpresona/releases/latest"
+            req = urllib.request.Request(
+                url,
+                headers={"User-Agent": "Interpresona-AutoUpdater"}
+            )
+            ctx = ssl._create_unverified_context()
+            with urllib.request.urlopen(req, context=ctx, timeout=5) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                latest_tag = data.get("tag_name", "v0.0.0").strip("v")
+                current_tag = __version__
+                
+                # Compare versions semantically (split dots)
+                latest_parts = [int(x) for x in latest_tag.split(".") if x.isdigit()]
+                current_parts = [int(x) for x in current_tag.split(".") if x.isdigit()]
+                
+                if latest_parts > current_parts:
+                    # Update is available, prompt user in the main thread safely
+                    self.after(500, lambda: self._prompt_update(data.get("tag_name"), data.get("html_url")))
+        except Exception as e:
+            # Silently ignore updates connection issues
+            pass
+
+    def _prompt_update(self, new_version: str, release_url: str):
+        msg = f"A new version of Interpresona ({new_version}) is available!\n\nWould you like to open the GitHub page to download the latest update?"
+        if messagebox.askyesno("Update Available", msg):
+            import webbrowser
+            webbrowser.open(release_url)
 
     # ------------------------------------------------------------------
     # Style setup
@@ -595,7 +635,7 @@ class InterpresonaApp(tk.Tk):
         tk.Frame(parent, bg=BG_MID).pack(fill="both", expand=True)
 
         # Version footer
-        tk.Label(parent, text="Interpresona v1.7.0  |  Step-by-step Wizard", bg=BG_MID, fg=TEXT_DIM, font=FONT_SMALL).pack(pady=10)
+        tk.Label(parent, text=f"Interpresona v{__version__}  |  Step-by-step Wizard", bg=BG_MID, fg=TEXT_DIM, font=FONT_SMALL).pack(pady=10)
 
     # ------------------------------------------------------------------
     # Main content area
