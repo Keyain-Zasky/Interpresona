@@ -869,13 +869,25 @@ class InterpresonaSimpleApp(tk.Tk):
                         targets.append(rec)
 
                 if targets:
-                    self._log(f"Foglio {sheet_name}: traduzione di {len(targets)} stringhe...", "info")
+                    tot_t = len(targets)
+                    self._log(f"Foglio {sheet_name}: traduzione di {tot_t} stringhe in corso...", "info")
                     CHUNK = 10
-                    for c_start in range(0, len(targets), CHUNK):
+                    for c_start in range(0, tot_t, CHUNK):
                         if self._is_cancelled:
                             break
                         chunk = targets[c_start: c_start + CHUNK]
                         texts = [r.masked_text for r in chunk]
+                        
+                        curr = min(c_start + len(chunk), tot_t)
+                        pct = int((curr / tot_t) * 100)
+                        self.after(0, lambda p=pct, c=curr, t=tot_t, s=sheet_name: [
+                            self._progress_bar.config(value=p),
+                            self._status_var.set(f"Traduzione {s}: {c}/{t} stringhe ({p}%)")
+                        ])
+
+                        if c_start % 100 == 0 or curr == tot_t:
+                            self.after(0, lambda c=curr, t=tot_t: self._log(f"Progresso: {c}/{t} stringhe tradotte...", "info"))
+
                         try:
                             translated_list = translator.translate(texts)
                             for rec, trans in zip(chunk, translated_list):
@@ -883,7 +895,7 @@ class InterpresonaSimpleApp(tk.Tk):
                                 if not ph_err:
                                     rec.translated_text = trans
                         except Exception as chunk_exc:
-                            self._log(f"Avviso blocco {c_start}/{len(targets)} su {sheet_name}: {chunk_exc}", "warning")
+                            self._log(f"Avviso blocco {c_start}/{tot_t} su {sheet_name}: {chunk_exc}", "warning")
 
                 # Save translated EXD/EXH to out_dir
                 safe_name = sheet_name.replace("/", "_")
@@ -935,18 +947,33 @@ class InterpresonaSimpleApp(tk.Tk):
                         targets.append(rec)
 
                 if targets:
-                    self._log(f"File {sheet_stem}: traduzione di {len(targets)} stringhe...", "info")
-                    CHUNK = 20
-                    for c_start in range(0, len(targets), CHUNK):
+                    tot_t = len(targets)
+                    self._log(f"File {sheet_stem}: traduzione di {tot_t} stringhe...", "info")
+                    CHUNK = 10
+                    for c_start in range(0, tot_t, CHUNK):
                         if self._is_cancelled:
                             break
                         chunk = targets[c_start: c_start + CHUNK]
                         texts = [r.masked_text for r in chunk]
-                        translated_list = translator.translate(texts)
-                        for rec, trans in zip(chunk, translated_list):
-                            ph_err = validate_placeholders(trans, rec.placeholders)
-                            if not ph_err:
-                                rec.translated_text = trans
+
+                        curr = min(c_start + len(chunk), tot_t)
+                        pct = int((curr / tot_t) * 100)
+                        self.after(0, lambda p=pct, c=curr, t=tot_t, s=sheet_stem: [
+                            self._progress_bar.config(value=p),
+                            self._status_var.set(f"Traduzione {s}: {c}/{t} stringhe ({p}%)")
+                        ])
+
+                        if c_start % 100 == 0 or curr == tot_t:
+                            self.after(0, lambda c=curr, t=tot_t: self._log(f"Progresso: {c}/{t} stringhe tradotte...", "info"))
+
+                        try:
+                            translated_list = translator.translate(texts)
+                            for rec, trans in zip(chunk, translated_list):
+                                ph_err = validate_placeholders(trans, rec.placeholders)
+                                if not ph_err:
+                                    rec.translated_text = trans
+                        except Exception as chunk_exc:
+                            self._log(f"Avviso blocco {c_start}/{tot_t} su {sheet_stem}: {chunk_exc}", "warning")
 
                 page_data = pipeline.inject_all()
                 for page_id, binary in page_data.items():
@@ -971,23 +998,35 @@ class InterpresonaSimpleApp(tk.Tk):
         records = pipeline.extract()
 
         targets = [r for r in records if r.masked_text.strip() and not r.translated_text and not r.errors]
-        self._log(f"Estratte {len(targets)} stringhe traducibili.", "info")
+        tot_t = len(targets)
+        self._log(f"Estratte {tot_t} stringhe traducibili.", "info")
 
         if targets:
-            CHUNK = 20
-            for c_start in range(0, len(targets), CHUNK):
+            CHUNK = 10
+            for c_start in range(0, tot_t, CHUNK):
                 if self._is_cancelled:
                     break
                 chunk = targets[c_start: c_start + CHUNK]
                 texts = [r.masked_text for r in chunk]
-                translated_list = translator.translate(texts)
-                for rec, trans in zip(chunk, translated_list):
-                    ph_err = validate_placeholders(trans, rec.placeholders)
-                    if not ph_err:
-                        rec.translated_text = trans
 
-                pct = int((c_start + len(chunk)) / len(targets) * 100)
-                self.after(0, lambda p=pct: self._progress_bar.config(value=p))
+                curr = min(c_start + len(chunk), tot_t)
+                pct = int((curr / tot_t) * 100)
+                self.after(0, lambda p=pct, c=curr, t=tot_t: [
+                    self._progress_bar.config(value=p),
+                    self._status_var.set(f"Traduzione singola: {c}/{t} stringhe ({p}%)")
+                ])
+
+                if c_start % 100 == 0 or curr == tot_t:
+                    self.after(0, lambda c=curr, t=tot_t: self._log(f"Progresso: {c}/{t} stringhe tradotte...", "info"))
+
+                try:
+                    translated_list = translator.translate(texts)
+                    for rec, trans in zip(chunk, translated_list):
+                        ph_err = validate_placeholders(trans, rec.placeholders)
+                        if not ph_err:
+                            rec.translated_text = trans
+                except Exception as chunk_exc:
+                    self._log(f"Avviso blocco {c_start}/{tot_t}: {chunk_exc}", "warning")
 
         page_data = pipeline.inject_all()
         binary = page_data.get(0, b"")
