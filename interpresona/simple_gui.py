@@ -1015,20 +1015,26 @@ class InterpresonaSimpleApp(tk.Tk):
                             translated_list = translator.translate(texts)
                             for rec, trans in zip(chunk, translated_list):
                                 ph_err = validate_placeholders(trans, rec.placeholders)
-                                status_code = "ok" if not ph_err else "error"
                                 if not ph_err:
                                     rec.translated_text = trans
-
-                                self._session_records.append({
-                                    "sheet": sheet_name,
-                                    "original": rec.masked_text,
-                                    "translated": trans,
-                                    "status": status_code,
-                                    "error_msg": ph_err or ""
-                                })
-
-                                if ph_err:
-                                    self.after(0, lambda r=rec.masked_text[:30], t=trans[:30], e=ph_err: self._log(f"  ✖ [ERRORE SEGNAPOSTO] '{r}' ➔ '{t}': {e}", "error"))
+                                    self._session_records.append({
+                                        "sheet": sheet_name,
+                                        "original": rec.masked_text,
+                                        "translated": trans,
+                                        "status": "ok",
+                                        "error_msg": ""
+                                    })
+                                else:
+                                    # Restore original text so binary file stays 100% valid
+                                    rec.translated_text = rec.masked_text
+                                    self._session_records.append({
+                                        "sheet": sheet_name,
+                                        "original": rec.masked_text,
+                                        "translated": rec.masked_text,
+                                        "status": "error",
+                                        "error_msg": f"Ripristinato originale: MT ha rimosso segnaposto ({ph_err})"
+                                    })
+                                    self.after(0, lambda r=rec.masked_text[:35]: self._log(f"  ⚠ [Segnaposto Ripristinato] '{r}' (MT ha rimosso segnaposto)", "warning"))
                         except Exception as chunk_exc:
                             self._log(f"Avviso blocco {c_start}/{tot_t} su {sheet_name}: {chunk_exc}", "warning")
 
@@ -1105,20 +1111,25 @@ class InterpresonaSimpleApp(tk.Tk):
                             translated_list = translator.translate(texts)
                             for rec, trans in zip(chunk, translated_list):
                                 ph_err = validate_placeholders(trans, rec.placeholders)
-                                status_code = "ok" if not ph_err else "error"
                                 if not ph_err:
                                     rec.translated_text = trans
-
-                                self._session_records.append({
-                                    "sheet": sheet_stem,
-                                    "original": rec.masked_text,
-                                    "translated": trans,
-                                    "status": status_code,
-                                    "error_msg": ph_err or ""
-                                })
-
-                                if ph_err:
-                                    self.after(0, lambda r=rec.masked_text[:30], t=trans[:30], e=ph_err: self._log(f"  ✖ [ERRORE SEGNAPOSTO] '{r}' ➔ '{t}': {e}", "error"))
+                                    self._session_records.append({
+                                        "sheet": sheet_stem,
+                                        "original": rec.masked_text,
+                                        "translated": trans,
+                                        "status": "ok",
+                                        "error_msg": ""
+                                    })
+                                else:
+                                    rec.translated_text = rec.masked_text
+                                    self._session_records.append({
+                                        "sheet": sheet_stem,
+                                        "original": rec.masked_text,
+                                        "translated": rec.masked_text,
+                                        "status": "error",
+                                        "error_msg": f"Ripristinato originale: MT ha rimosso segnaposto ({ph_err})"
+                                    })
+                                    self.after(0, lambda r=rec.masked_text[:35]: self._log(f"  ⚠ [Segnaposto Ripristinato] '{r}' (MT ha rimosso segnaposto)", "warning"))
                         except Exception as chunk_exc:
                             self._log(f"Avviso blocco {c_start}/{tot_t} su {sheet_stem}: {chunk_exc}", "warning")
 
@@ -1170,20 +1181,25 @@ class InterpresonaSimpleApp(tk.Tk):
                     translated_list = translator.translate(texts)
                     for rec, trans in zip(chunk, translated_list):
                         ph_err = validate_placeholders(trans, rec.placeholders)
-                        status_code = "ok" if not ph_err else "error"
                         if not ph_err:
                             rec.translated_text = trans
-
-                        self._session_records.append({
-                            "sheet": sheet_stem,
-                            "original": rec.masked_text,
-                            "translated": trans,
-                            "status": status_code,
-                            "error_msg": ph_err or ""
-                        })
-
-                        if ph_err:
-                            self.after(0, lambda r=rec.masked_text[:30], t=trans[:30], e=ph_err: self._log(f"  ✖ [ERRORE SEGNAPOSTO] '{r}' ➔ '{t}': {e}", "error"))
+                            self._session_records.append({
+                                "sheet": sheet_stem,
+                                "original": rec.masked_text,
+                                "translated": trans,
+                                "status": "ok",
+                                "error_msg": ""
+                            })
+                        else:
+                            rec.translated_text = rec.masked_text
+                            self._session_records.append({
+                                "sheet": sheet_stem,
+                                "original": rec.masked_text,
+                                "translated": rec.masked_text,
+                                "status": "error",
+                                "error_msg": f"Ripristinato originale: MT ha rimosso segnaposto ({ph_err})"
+                            })
+                            self.after(0, lambda r=rec.masked_text[:35]: self._log(f"  ⚠ [Segnaposto Ripristinato] '{r}' (MT ha rimosso segnaposto)", "warning"))
                 except Exception as chunk_exc:
                     self._log(f"Avviso blocco {c_start}/{tot_t}: {chunk_exc}", "warning")
 

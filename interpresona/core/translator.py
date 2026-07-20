@@ -189,23 +189,26 @@ class LibreTranslateTranslator(BaseTranslator):
 
     def translate(self, texts: list[str]) -> list[str]:
         results = []
+        import re
         for i, text in enumerate(texts):
-            # If the text consists purely of placeholders, spaces, and punctuation symbols,
-            # we do not need to send it to the MT engine.
-            # We simply return the input string unmodified.
-            import re
             cleaned = re.sub(r"\{\d+\}", "", text).strip()
-            # If nothing remains except punctuation/spaces, bypass translation
-            if not cleaned or re.match(r"^[ \t\r\n.,;:!?'\"`~@#$%^&*()_+={}\[\]|\\<>\-※\ue000-\ue0ff]*$", cleaned):
+            is_bypass = False
+            if not cleaned:
+                is_bypass = True
+            elif re.match(r"^[ \t\r\n.,;:!?'\"`~@#$%^&*()_+={}\[\]|\\<>\-※《》\/\\%0-9\ue000-\ue0ff]*$", cleaned):
+                is_bypass = True
+            elif cleaned.lower() in ("m", "h", "d", "s", "ms", "sec", "min", "hr", "day", "lv", "lv.", "xp", "hp", "mp", "gp", "cp"):
+                is_bypass = True
+            elif len(re.findall(r"[a-zA-Z]", cleaned)) < 3:
+                is_bypass = True
+
+            if is_bypass:
                 results.append(text)
             else:
                 results.append(self._translate_one(text))
             
-            # Periodically allow Tkinter to refresh its window messages and draw updates 
-            # to prevent Windows from marking the app as "Not Responding" during long loops
             try:
                 import tkinter as tk
-                # Get the active tk root instance if it exists and update it
                 root = tk._default_root
                 if root:
                     root.update()
