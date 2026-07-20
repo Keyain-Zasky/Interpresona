@@ -1,2 +1,2 @@
 # FFXIV Translation Tool package
-__version__ = "1.9.21"
+__version__ = "1.9.22"
