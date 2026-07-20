@@ -118,18 +118,99 @@ class FlatButton(tk.Button):
             self.config(bg=self._normal_bg)
 
 
+class EditStringDialog(tk.Toplevel):
+    """Dialog to manually translate or edit a single string record."""
+
+    def __init__(self, parent, record: dict, on_save_callback=None):
+        super().__init__(parent)
+        self.title("✏️ Modifica Manuale Traduzione")
+        self.geometry("620x480")
+        self.minsize(500, 400)
+        self.configure(bg=BG_DARK)
+
+        self._record = record
+        self._on_save = on_save_callback
+        self.grab_set()
+
+        self._build_ui()
+
+    def _build_ui(self):
+        pad = tk.Frame(self, bg=BG_DARK, padx=20, pady=16)
+        pad.pack(fill="both", expand=True)
+
+        sheet = self._record.get("sheet", "")
+        tk.Label(pad, text=f"Modifica Traduzione — Foglio '{sheet}'", bg=BG_DARK, fg=ACCENT_LIGHT, font=FONT_HEAD).pack(anchor="w", pady=(0, 10))
+
+        # Original Text Reference
+        tk.Label(pad, text="Testo Originale (Riferimento):", bg=BG_DARK, fg=TEXT_SEC, font=FONT_SUB).pack(anchor="w", pady=(0, 4))
+        orig_text = scrolledtext.ScrolledText(pad, bg=BG_INPUT, fg=TEXT_PRI, font=FONT_BODY, height=4, relief="flat")
+        orig_text.insert("1.0", self._record.get("original", ""))
+        orig_text.config(state="disabled")
+        orig_text.pack(fill="x", pady=(0, 12))
+
+        # Placeholders Info
+        import re
+        orig_str = self._record.get("original", "")
+        phs = re.findall(r"\{\d+\}", orig_str)
+        if phs:
+            ph_txt = f"💡 Segnaposto obbligatori nel testo: {', '.join(set(phs))}"
+            tk.Label(pad, text=ph_txt, bg=BG_DARK, fg=WARNING, font=FONT_SMALL).pack(anchor="w", pady=(0, 10))
+
+        # Manual Translation Input Area
+        tk.Label(pad, text="Nuova Traduzione Manuale:", bg=BG_DARK, fg=TEXT_PRI, font=FONT_SUB).pack(anchor="w", pady=(0, 4))
+        self._edit_text = scrolledtext.ScrolledText(pad, bg=BG_MID, fg=TEXT_PRI, font=FONT_BODY, height=5, relief="flat", insertbackground=TEXT_PRI)
+        self._edit_text.insert("1.0", self._record.get("translated", ""))
+        self._edit_text.pack(fill="both", expand=True, pady=(0, 12))
+
+        # Error / Validation Label
+        self._val_label = tk.Label(pad, text="", bg=BG_DARK, fg=ERROR_COL, font=FONT_SMALL)
+        self._val_label.pack(anchor="w", pady=(0, 8))
+
+        # Action Buttons
+        btn_box = tk.Frame(pad, bg=BG_DARK)
+        btn_box.pack(fill="x")
+
+        FlatButton(btn_box, text="💾 Salva Traduzione", command=self._save_changes, accent=True).pack(side="right", padx=(8, 0))
+        FlatButton(btn_box, text="Annulla", command=self.destroy).pack(side="right")
+
+    def _save_changes(self):
+        new_trans = self._edit_text.get("1.0", "end-1c").strip()
+        import re
+        orig_str = self._record.get("original", "")
+        req_phs = set(re.findall(r"\{\d+\}", orig_str))
+        new_phs = set(re.findall(r"\{\d+\}", new_trans))
+
+        missing = req_phs - new_phs
+        if missing:
+            self._val_label.config(text=f"⚠ Segnaposto mancanti nella traduzione: {', '.join(missing)}")
+            return
+
+        self._record["translated"] = new_trans
+        self._record["status"] = "manual"
+        self._record["error_msg"] = "Modificato a mano"
+
+        rec_obj = self._record.get("record_obj")
+        if rec_obj:
+            rec_obj.translated_text = new_trans
+
+        if self._on_save:
+            self._on_save()
+
+        self.destroy()
+
+
 class StringInspectorWindow(tk.Toplevel):
-    """Pop-up Inspector window to browse all translated strings and errors."""
+    """Pop-up Inspector window to browse and manually edit all translated strings and errors."""
 
     def __init__(self, parent, records: list[dict]):
         super().__init__(parent)
-        self.title("Interpresona — Ispezione Traduzioni ed Errori")
-        self.geometry("950x650")
-        self.minsize(800, 500)
+        self.title("Interpresona — Ispezione e Modifica Traduzioni ed Errori")
+        self.geometry("980x660")
+        self.minsize(820, 520)
         self.configure(bg=BG_DARK)
 
         self._records = records
-        self._filter_type = "all"  # all, errors, ok
+        self._filter_type = "all"  # all, errors, ok, bypassed, manual
 
         self._build_ui()
 
@@ -138,17 +219,18 @@ class StringInspectorWindow(tk.Toplevel):
         hdr = tk.Frame(self, bg=BG_MID, padx=16, pady=12)
         hdr.pack(fill="x")
 
-        tk.Label(hdr, text="📊 Ispezione Traduzioni ed Errori", bg=BG_MID, fg=ACCENT_LIGHT, font=FONT_HEAD).pack(side="left")
+        tk.Label(hdr, text="📊 Ispezione e Modifica Traduzioni", bg=BG_MID, fg=ACCENT_LIGHT, font=FONT_HEAD).pack(side="left")
 
         tot = len(self._records)
         errs = sum(1 for r in self._records if r["status"] == "error")
         oks = sum(1 for r in self._records if r["status"] == "ok")
         bypassed = sum(1 for r in self._records if r["status"] == "bypassed")
+        manuals = sum(1 for r in self._records if r["status"] == "manual")
 
-        stats_str = f"Totali: {tot}  |  ✓ Tradotte: {oks}  |  ⏭ Bypass: {bypassed}  |  ✖ Errori: {errs}"
+        stats_str = f"Totali: {tot}  |  ✓ Tradotte: {oks}  |  ✏️ Manuali: {manuals}  |  ⏭ Bypass: {bypassed}  |  ✖ Errori: {errs}"
         tk.Label(hdr, text=stats_str, bg=BG_MID, fg=TEXT_PRI, font=FONT_SUB).pack(side="right")
 
-        # Control Bar (Search & Filters)
+        # Control Bar (Search, Filters, Edit button)
         bar = tk.Frame(self, bg=BG_DARK, padx=16, pady=10)
         bar.pack(fill="x")
 
@@ -159,15 +241,18 @@ class StringInspectorWindow(tk.Toplevel):
         search_entry = tk.Entry(
             bar, textvariable=self._search_var, bg=BG_INPUT, fg=TEXT_PRI,
             insertbackground=TEXT_PRI, font=FONT_BODY, bd=0, relief="flat",
-            highlightthickness=1, highlightbackground=BORDER, highlightcolor=ACCENT, width=24
+            highlightthickness=1, highlightbackground=BORDER, highlightcolor=ACCENT, width=20
         )
-        search_entry.pack(side="left", padx=(0, 12))
+        search_entry.pack(side="left", padx=(0, 10))
 
         # Filter Buttons
         FlatButton(bar, text=f"Tutti ({tot})", command=lambda: self._set_filter("all")).pack(side="left", padx=2)
         FlatButton(bar, text=f"✓ Tradotti ({oks})", command=lambda: self._set_filter("ok"), accent=True).pack(side="left", padx=2)
+        FlatButton(bar, text=f"✏️ Manuali ({manuals})", command=lambda: self._set_filter("manual")).pack(side="left", padx=2)
         FlatButton(bar, text=f"⏭ Bypass ({bypassed})", command=lambda: self._set_filter("bypassed")).pack(side="left", padx=2)
-        FlatButton(bar, text=f"✖ Solo Errori ({errs})", command=lambda: self._set_filter("errors"), danger=True).pack(side="left", padx=2)
+        FlatButton(bar, text=f"✖ Errori ({errs})", command=lambda: self._set_filter("errors"), danger=True).pack(side="left", padx=2)
+
+        FlatButton(bar, text="✏️ Modifica Selezionata", command=self._edit_selected_string, accent=True).pack(side="right")
 
         # Table Container (Treeview with Scrollbars)
         tbl_frame = tk.Frame(self, bg=BG_DARK, padx=16, pady=4)
@@ -178,12 +263,12 @@ class StringInspectorWindow(tk.Toplevel):
 
         self._tree.heading("sheet", text="Foglio")
         self._tree.heading("original", text="Testo Originale")
-        self._tree.heading("translated", text="Testo Tradotto")
+        self._tree.heading("translated", text="Testo Tradotto (Doppio-click per modificare)")
         self._tree.heading("status", text="Stato / Errore")
 
         self._tree.column("sheet", width=120, anchor="w")
-        self._tree.column("original", width=330, anchor="w")
-        self._tree.column("translated", width=330, anchor="w")
+        self._tree.column("original", width=320, anchor="w")
+        self._tree.column("translated", width=340, anchor="w")
         self._tree.column("status", width=150, anchor="w")
 
         vsb = ttk.Scrollbar(tbl_frame, orient="vertical", command=self._tree.yview)
@@ -196,7 +281,11 @@ class StringInspectorWindow(tk.Toplevel):
 
         self._tree.tag_configure("error", background="#451a1a", foreground="#f87171")
         self._tree.tag_configure("ok", background="#1c2032", foreground="#ffffff")
+        self._tree.tag_configure("manual", background="#1a3b2b", foreground="#4ade80")
         self._tree.tag_configure("bypassed", background="#1a2d3e", foreground="#93c5fd")
+
+        # Double-click to edit string
+        self._tree.bind("<Double-1>", lambda e: self._edit_selected_string())
 
         self._populate_table()
 
@@ -210,13 +299,15 @@ class StringInspectorWindow(tk.Toplevel):
 
         q = self._search_var.get().lower().strip()
 
-        for r in self._records:
+        for idx, r in enumerate(self._records):
             status = r["status"]
             if self._filter_type == "errors" and status != "error":
                 continue
             if self._filter_type == "ok" and status != "ok":
                 continue
             if self._filter_type == "bypassed" and status != "bypassed":
+                continue
+            if self._filter_type == "manual" and status != "manual":
                 continue
 
             orig = r["original"]
@@ -228,10 +319,29 @@ class StringInspectorWindow(tk.Toplevel):
                 if q not in orig.lower() and q not in trans.lower() and q not in sheet.lower() and q not in err_msg.lower():
                     continue
 
-            status_txt = f"✖ {err_msg}" if status == "error" else ("⏭ Preservato (Bypass)" if status == "bypassed" else "✓ Tradotto")
+            if status == "error":
+                status_txt = f"✖ {err_msg}"
+            elif status == "bypassed":
+                status_txt = "⏭ Preservato (Bypass)"
+            elif status == "manual":
+                status_txt = "✏️ Modificato a mano"
+            else:
+                status_txt = "✓ Tradotto"
+
             tag = status
 
-            self._tree.insert("", "end", values=(sheet, orig, trans, status_txt), tags=(tag,))
+            self._tree.insert("", "end", iid=str(idx), values=(sheet, orig, trans, status_txt), tags=(tag,))
+
+    def _edit_selected_string(self):
+        sel = self._tree.selection()
+        if not sel:
+            messagebox.showinfo("Seleziona Stringa", "Seleziona prima una stringa dalla tabella per modificarla.")
+            return
+
+        rec_idx = int(sel[0])
+        record = self._records[rec_idx]
+
+        EditStringDialog(self, record, on_save_callback=self._populate_table)
 
 
 class InterpresonaSimpleApp(tk.Tk):
@@ -1028,7 +1138,8 @@ class InterpresonaSimpleApp(tk.Tk):
                                         "original": rec.masked_text,
                                         "translated": trans,
                                         "status": st_code,
-                                        "error_msg": "Preservato (Bypass)" if st_code == "bypassed" else ""
+                                        "error_msg": "Preservato (Bypass)" if st_code == "bypassed" else "",
+                                        "record_obj": rec
                                     })
                                 else:
                                     # Restore original text so binary file stays 100% valid
@@ -1038,7 +1149,8 @@ class InterpresonaSimpleApp(tk.Tk):
                                         "original": rec.masked_text,
                                         "translated": rec.masked_text,
                                         "status": "error",
-                                        "error_msg": f"Ripristinato originale: MT ha rimosso segnaposto ({ph_err})"
+                                        "error_msg": f"Ripristinato originale: MT ha rimosso segnaposto ({ph_err})",
+                                        "record_obj": rec
                                     })
                                     self.after(0, lambda r=rec.masked_text[:35]: self._log(f"  ⚠ [Segnaposto Ripristinato] '{r}' (MT ha rimosso segnaposto)", "warning"))
                         except Exception as chunk_exc:
@@ -1125,7 +1237,8 @@ class InterpresonaSimpleApp(tk.Tk):
                                         "original": rec.masked_text,
                                         "translated": trans,
                                         "status": st_code,
-                                        "error_msg": "Preservato (Bypass)" if st_code == "bypassed" else ""
+                                        "error_msg": "Preservato (Bypass)" if st_code == "bypassed" else "",
+                                        "record_obj": rec
                                     })
                                 else:
                                     rec.translated_text = rec.masked_text
@@ -1134,7 +1247,8 @@ class InterpresonaSimpleApp(tk.Tk):
                                         "original": rec.masked_text,
                                         "translated": rec.masked_text,
                                         "status": "error",
-                                        "error_msg": f"Ripristinato originale: MT ha rimosso segnaposto ({ph_err})"
+                                        "error_msg": f"Ripristinato originale: MT ha rimosso segnaposto ({ph_err})",
+                                        "record_obj": rec
                                     })
                                     self.after(0, lambda r=rec.masked_text[:35]: self._log(f"  ⚠ [Segnaposto Ripristinato] '{r}' (MT ha rimosso segnaposto)", "warning"))
                         except Exception as chunk_exc:
@@ -1196,7 +1310,8 @@ class InterpresonaSimpleApp(tk.Tk):
                                 "original": rec.masked_text,
                                 "translated": trans,
                                 "status": st_code,
-                                "error_msg": "Preservato (Bypass)" if st_code == "bypassed" else ""
+                                "error_msg": "Preservato (Bypass)" if st_code == "bypassed" else "",
+                                "record_obj": rec
                             })
                         else:
                             rec.translated_text = rec.masked_text
@@ -1205,7 +1320,8 @@ class InterpresonaSimpleApp(tk.Tk):
                                 "original": rec.masked_text,
                                 "translated": rec.masked_text,
                                 "status": "error",
-                                "error_msg": f"Ripristinato originale: MT ha rimosso segnaposto ({ph_err})"
+                                "error_msg": f"Ripristinato originale: MT ha rimosso segnaposto ({ph_err})",
+                                "record_obj": rec
                             })
                             self.after(0, lambda r=rec.masked_text[:35]: self._log(f"  ⚠ [Segnaposto Ripristinato] '{r}' (MT ha rimosso segnaposto)", "warning"))
                 except Exception as chunk_exc:
