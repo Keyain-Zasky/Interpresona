@@ -1357,7 +1357,8 @@ class InterpresonaSimpleApp(tk.Tk):
 
         self._is_running = True
         self._is_cancelled = False
-        self._session_records.clear()
+        # Preserve all manual translations created before execution!
+        self._session_records = [r for r in self._session_records if r.get("status") == "manual"]
         self._btn_start_exec.config(state="disabled")
         self._btn_stop_exec.config(state="normal")
         self._btn_inspect.config(state="normal")
