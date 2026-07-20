@@ -1,78 +1,61 @@
-# Interpresona — FFXIV Dialogue & Interface Text Translation Tool
+# Interpresona — FFXIV Dialogue & Interface Text Translation Studio (v1.9.28)
 
-Interpresona is a premium, high-performance desktop application designed for extracting, translating, and injecting Final Fantasy XIV (FFXIV) game sheets (`.exh` / `.exd` formats). Built entirely from scratch in Python with zero external execution dependencies, it guarantees absolute data preservation while maintaining FFXIV control codes, variables, and color formatting tags.
-
----
-
-## Key Features
-
-- **Dual-Mode Architecture**:
-  - **Manual Mode**: Directly browse and open isolated `.exh`/`.exd` files extracted from third-party tools.
-  - **SqPack Game Loader**: Point the application directly to your FFXIV game installation folder to automatically map and decompress active archives on the fly.
-- **Smart Filter Pipeline**:
-  - Automatically isolates translatable dialogue text, stripping away thousands of technical metadata files and internal technical keys (e.g. `TEXT_` and `KEY_` placeholders).
-- **SeString-Safe Masking**:
-  - Safely masks binary control codes (color changes, speaker identifiers, name variable lookups) into secure placeholders (like `⟪VAR_0⟫`) to prevent machine translation engines or manual edits from corrupting game files.
-- **Flexible Exporter / Importer**:
-  - Export extracted text to standard CSV formats for automated bulk processing (Google Translate, DeepL, LibreTranslate) and re-import them with a single click.
-- **Integrated Machine Translation (MT)**:
-  - Perform automated in-app translations using DeepL or LibreTranslate API keys.
-- **Modern Premium Interface**:
-  - High-fidelity dark mode with clean tab routing, search/filter bars, interactive custom pill buttons, and visual focus indicators.
+Interpresona is a premium, high-performance desktop application designed for extracting, translating, inspecting, and injecting Final Fantasy XIV (FFXIV) game sheets (`.exh` / `.exd` binary formats). Built entirely from scratch in Python with zero external execution dependencies, it guarantees absolute data preservation while maintaining FFXIV control codes, variables, and color formatting tags.
 
 ---
 
-## How It Works
+## 🌟 Key Features & Latest Enhancements (v1.9.28)
+
+- **Simplified Step-by-Step Guided Wizard GUI (`simple_gui.py`)**:
+  - **Step 1: Data Source Selection**: Live auto-detection of FFXIV SqPack game directory, extracted `.exh`/`.exd` folder, or single file pair. Includes the new **Searchable Sheet Selector Dialog (`SheetSearchDialog`)** to quickly search and filter any game sheet by name (e.g. `Addon`, `Item`, `Quest`, `Action`, `Status`).
+  - **Step 2: Translator Configuration**: Configure LibreTranslate (local/private server) or DeepL API engines with instant connection diagnostic tests.
+  - **Step 3: Destination Output**: Set target output folder with real-time path validation.
+  - **Step 4: Execution & Event Terminal**: Real-time progress tracking bar, terminal console log, and direct access to string inspection.
+
+- **Pre-Execution Manual Translation Preservation**:
+  - Perform manual translations in the Inspector before starting mass translation. Manually edited strings are **100% preserved**, skipped from machine translation requests, and written directly to the target output game files.
+
+- **SeString-Safe Control Code & Placeholder Masking**:
+  - Safely masks binary control codes (color changes, speaker identifiers, name variable lookups, `{0}`, `{1}`) into secure placeholders to prevent NMT engines from corrupting game files.
+  - Automatic placeholder validation restores original text if an external MT engine alters a control token, preventing client crashes.
+
+- **Ultra High-End Slate & Violet Dark Theme (Zero White Borders)**:
+  - Immersive Windows 10/11 Dark Titlebar integration via DWM API.
+  - Custom `DarkScrolledText` and flat dark `ttk.Scrollbar` / `ttk.Treeview` styling with zero white borders, zero 3D bevels, and smooth dark contours.
+
+- **Dual-Mode Architecture & Inspection Suite**:
+  - **String Inspector (`StringInspectorWindow`)**: Filter and search strings by status (*In Attesa*, *Tradotti*, *Manuali*, *Bypass*, *Errori*).
+  - **Manual String Editor (`EditStringDialog`)**: Quick double-click inline string editing with placeholder completeness checks.
+
+---
+
+## 🔄 Workflow Diagram
 
 ```mermaid
 graph TD
     A["SqPack Game Files / Manual EXH & EXD"] --> B["EXD Parser"]
     B --> C["SeString Masker"]
     C --> D["Translatable Dialogue List"]
-    D --> E["In-App Inline Editor / CSV Bulk Export"]
-    E --> F["Machine Translation / Manual Editing"]
-    F --> G["SeString Unmasker"]
+    D --> E["String Inspector & Pre-Translation Editor"]
+    E --> F["Machine Translation (LibreTranslate / DeepL)"]
+    F --> G["SeString Unmasker & Safety Validator"]
     G --> H["EXD Injector"]
-    H --> I["Translated EXD Output"]
+    H --> I["Translated EXD & EXH Output"]
 ```
 
-*The .exd page data is rebuilt with recalculated string pointers, while all original variable bytes are preserved.*
-
 ---
 
-## Technical Details & Architecture
-
-### 1. Game Data Extraction (SqPack Reader)
-The `SqPackReader` reads FFXIV retail assets from the `sqpack/` directory. FFXIV organizes assets using index files (`.index`) and data archives (`.dat` files).
-- **Path Hashing**: Paths are hashed using the bitwise-NOT of CRC32 for the lowercased ASCII text (`~crc32(path)`).
-- **Index Lookup**: It maps folder and filename hashes to locate the data block position (data archive ID and byte offset) within the target `.dat` archive.
-- **Decompression**: The compressed data blocks are read and parsed using raw zlib deflate (`decompress(chunk, -15)`).
-
-### 2. Schema and Sheet Structure (.exh & .exd)
-- **EXH Schema**: Defines the row size, column definitions, and depth layout. It maps column types (such as `0x0000` for Strings, `0x0001` for Booleans, and others representing different integer sizes).
-- **EXD Pages**: Contains rows grouped in pages.
-- **Row Formats**:
-  - **Flat Rows (row_type = 1)**: Simple, contiguous database rows.
-  - **Sub-Rows (row_type = 2)**: Nested rows under a single row ID (common in quests and dialogue sheets). The first 2 bytes of the payload contain the sub-row ID.
-- **String Pointers**: FFXIV string pointers are 4 bytes. In flat sheets, the offset is typically stored shifted to the upper 16 bits of the field. In sub-row files (and some flat quest dialogue files), they are stored as standard 32-bit big-endian offsets. The parser automatically detects this on the fly.
-
-### 3. Dialogue Text Masking Engine
-To protect the integrity of the game's formatting during translation, localized variables, text styling instructions, and macro instructions are masked:
-- **Control Codes**: FFXIV uses `0x02` prefix bytes followed by variable-length parameters to handle conditional dialogue blocks, color rendering, and character name insertion (e.g. `<Clickable>`, `<If(PlayerGender)>`).
-- **Placeholder Generation**: The `mask` logic extracts these bytes, saves them in an internal dictionary, and replaces them with user-friendly tokens (e.g., `⟪VAR_0⟫`).
-- **Safety Verification**: During translation saving or CSV importing, the engine validates that all placeholders are preserved to prevent runtime client crashes.
-
----
-
-## Detailed Directory Map
+## 📁 Project Architecture & Structure
 
 ```
 Interpresona/
-├── run_gui.py                    # Main startup script for the Tkinter desktop GUI
+├── run_gui.py                    # Main startup entry point for the Desktop Wizard GUI
 ├── README.md                     # Comprehensive project documentation
 ├── LICENSE                       # MIT Open Source License
 └── interpresona/
-    ├── gui.py                    # Visual layout, themes, filters, and editor bindings
+    ├── __init__.py               # Package metadata & version info (v1.9.28)
+    ├── simple_gui.py             # Streamlined Step-by-Step Wizard & Pop-up Suite
+    ├── gui.py                    # Legacy tabbed GUI mode
     ├── core/
     │   ├── sqpack.py             # Binary SqPack archive and index reader
     │   ├── parser.py             # Parser for EXH schema structures and EXD rows
@@ -81,15 +64,15 @@ Interpresona/
     │   ├── session.py            # Translation state save/load utilities (.ffxivts)
     │   └── translator.py         # DeepL & LibreTranslate integration wrappers
     └── tests/
-        ├── run_all_tests.py      # Independent test runner for the test suite
+        ├── run_all_tests.py      # Independent audit runner for the 32-test suite
         ├── test_parser.py        # Binary reader & parser unit tests
         ├── test_pipeline.py      # End-to-end extraction and injection unit tests
-        └── mock_generator.py     # Random mock EXH/EXD byte generator for test assertions
+        └── mock_generator.py     # Random mock EXH/EXD byte generator
 ```
 
 ---
 
-## Installation & Running
+## ⚙️ Installation & Running
 
 This project uses `uv` as its Python package and environment manager.
 
@@ -99,18 +82,18 @@ This project uses `uv` as its Python package and environment manager.
    cd Interpresona
    ```
 
-2. **Run the Application**:
+2. **Launch the Application**:
    ```bash
    uv run python run_gui.py
    ```
 
-3. **Run Unit Tests**:
+3. **Run Full Audit Test Suite (32 Tests)**:
    ```bash
    uv run python interpresona/tests/run_all_tests.py
    ```
 
 ---
 
-## License
+## 📜 License
 
 This project is licensed under the MIT License. See the [LICENSE](file:///C:/Users/d.paolozzi/Documents/antigravity/beautiful-bose/LICENSE) file for more details.
