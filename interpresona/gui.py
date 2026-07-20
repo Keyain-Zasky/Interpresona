@@ -378,6 +378,9 @@ class InterpresonaApp(tk.Tk):
         self._mode_btn = FlatButton(header, text="Switch Mode", command=self._show_startup_overlay, accent=False)
         self._mode_btn.pack(side="right", padx=18, pady=12)
 
+        # Simple Wizard shortcut button
+        FlatButton(header, text="Wizard Guidato ⚡", command=self._switch_to_simple_wizard, accent=True).pack(side="right", padx=(0, 10), pady=12)
+
         sep = tk.Frame(self, bg=BORDER, height=1)
         sep.pack(fill="x")
 
@@ -486,6 +489,18 @@ class InterpresonaApp(tk.Tk):
         mass_desc.pack(pady=(0, 20))
 
         FlatButton(mass_card, text="Select Mode", command=lambda: self._set_mode("mass"), accent=True).pack(pady=(0, 10))
+
+        # Simple Wizard Banner Card
+        wiz_banner = tk.Frame(center, bg=BG_CARD, bd=1, highlightbackground=ACCENT, highlightthickness=1)
+        wiz_banner.pack(fill="x", pady=(24, 0), ipadx=10, ipady=8)
+
+        tk.Label(wiz_banner, text="⚡ Cerchi una procedura guidata più semplice e compatta?", bg=BG_CARD, fg=ACCENT_LIGHT, font=FONT_SUB).pack(side="left", padx=14)
+        FlatButton(wiz_banner, text="Apri Wizard Semplificato ▶", command=self._switch_to_simple_wizard, accent=True).pack(side="right", padx=14)
+
+    def _switch_to_simple_wizard(self):
+        self.destroy()
+        from interpresona.simple_gui import main as main_simple
+        main_simple()
 
     def _set_mode(self, mode: str):
         self._mode = mode

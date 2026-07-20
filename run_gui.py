@@ -7,7 +7,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from interpresona.gui import main
+from interpresona.gui import main as main_advanced
+from interpresona.simple_gui import main as main_simple
 
 if __name__ == "__main__":
-    main()
+    if "--simple" in sys.argv or "-s" in sys.argv:
+        main_simple()
+    else:
+        main_advanced()

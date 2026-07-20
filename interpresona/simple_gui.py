@@ -1,0 +1,804 @@
+"""
+Interpresona — Simplified Step-by-Step Wizard GUI
+=================================================
+A streamlined, compact wizard interface for non-technical users.
+Guides the user step-by-step:
+  Step 1: Select Input Data (Game SqPack / Folder / File)
+  Step 2: Translation Service Setup & Connection Test
+  Step 3: Select Output Destination
+  Step 4: Execute & Real-Time Progress
+"""
+from __future__ import annotations
+
+import os
+import sys
+import json
+import threading
+import urllib.request
+import urllib.parse
+import ssl
+import tkinter as tk
+from tkinter import ttk, filedialog, messagebox, scrolledtext
+from pathlib import Path
+from typing import Optional
+
+# Ensure project root is in path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from interpresona import __version__
+from interpresona.core.sqpack import SqPackReader
+from interpresona.core.parser import EXHParser
+from interpresona.core.pipeline import TranslationPipeline
+from interpresona.core.masker import validate_placeholders
+from interpresona.core.translator import (
+    DeepLTranslator, LibreTranslateTranslator, MockTranslator,
+    BaseTranslator, TranslationError,
+)
+
+# ---------------------------------------------------------------------------
+# Styling palette
+# ---------------------------------------------------------------------------
+BG_DARK      = "#0f111a"
+BG_MID       = "#161929"
+BG_CARD      = "#1c2033"
+BG_HOVER     = "#232740"
+ACCENT       = "#7b5ea7"
+ACCENT_LIGHT = "#a17dcc"
+SUCCESS      = "#4caf7d"
+WARNING      = "#e8a838"
+ERROR_COL    = "#e05252"
+TEXT_PRI     = "#e8eaf0"
+TEXT_SEC     = "#8a8fa8"
+TEXT_DIM     = "#525672"
+BORDER       = "#2a2f4a"
+
+FONT_HEAD    = ("Segoe UI", 14, "bold")
+FONT_SUB     = ("Segoe UI", 10, "bold")
+FONT_BODY    = ("Segoe UI", 9)
+FONT_MONO    = ("Consolas", 9)
+FONT_SMALL   = ("Segoe UI", 8)
+
+
+class FlatButton(tk.Button):
+    def __init__(self, parent, text="", command=None, accent=False, danger=False, **kw):
+        bg = ACCENT if accent else (ERROR_COL if danger else BG_CARD)
+        fg = TEXT_PRI
+        super().__init__(
+            parent, text=text, command=command, bg=bg, fg=fg,
+            activebackground=ACCENT_LIGHT if accent else BG_HOVER,
+            activeforeground=TEXT_PRI, relief="flat", bd=0,
+            font=FONT_SUB, cursor="hand2", padx=16, pady=8, **kw
+        )
+        self.bind("<Enter>", lambda e: self.config(bg=ACCENT_LIGHT if accent else BG_HOVER))
+        self.bind("<Leave>", lambda e: self.config(bg=bg))
+
+
+class InterpresonaSimpleApp(tk.Tk):
+    """Simplified Step-by-Step Wizard GUI Window."""
+
+    def __init__(self):
+        super().__init__()
+        self.title("Interpresona — Guided Translation Wizard")
+        self.geometry("860x640")
+        self.minsize(780, 560)
+        self.configure(bg=BG_DARK)
+
+        # Wizard state
+        self._current_step = 1
+        self._source_type = tk.StringVar(value="sqpack")  # sqpack, folder, file
+        self._game_path_var = tk.StringVar()
+        self._input_folder_var = tk.StringVar()
+        self._input_file_var = tk.StringVar()
+
+        # Translator config
+        self._backend_var = tk.StringVar(value="libretranslate")
+        self._libre_url_var = tk.StringVar(value="https://translate.systemofagamer.it")
+        self._deepl_key_var = tk.StringVar()
+        self._source_lang_var = tk.StringVar(value="en")
+        self._target_lang_var = tk.StringVar(value="it")
+
+        # Output folder
+        self._output_folder_var = tk.StringVar(value=str(Path.cwd() / "translated_output"))
+
+        # Execution state
+        self._is_cancelled = False
+        self._is_running = False
+
+        self._auto_detect_game_folder()
+        self._setup_styles()
+        self._build_ui()
+        self._show_step(1)
+
+        # Run background update check
+        threading.Thread(target=self._check_updates_bg, daemon=True).start()
+
+    def _auto_detect_game_folder(self):
+        """Auto-detect standard FFXIV game / sqpack locations."""
+        candidates = [
+            Path(r"C:\Users\d.paolozzi\Documents\antigravity\beautiful-bose\sqpack"),
+            Path(r"C:\Program Files (x86)\SquareEnix\FINAL FANTASY XIV - A Realm Reborn"),
+            Path(r"C:\SquareEnix\FINAL FANTASY XIV - A Realm Reborn"),
+            Path.cwd() / "sqpack",
+            Path.cwd(),
+        ]
+        for c in candidates:
+            if c.exists():
+                if (c / "game" / "sqpack").exists():
+                    self._game_path_var.set(str(c))
+                    return
+                elif list(c.glob("*.index")) or list(c.glob("*.win32.index")):
+                    self._game_path_var.set(str(c))
+                    return
+                elif (c / "exd").exists() or (c / "ffxiv").exists():
+                    self._game_path_var.set(str(c))
+                    return
+
+    def _setup_styles(self):
+        style = ttk.Style(self)
+        style.theme_use("clam")
+        style.configure(".", background=BG_DARK, foreground=TEXT_PRI)
+        style.configure("TProgressbar", thickness=14, troughcolor=BG_MID, background=ACCENT, bordercolor=BG_MID)
+        style.configure("TCombobox", fieldbackground=BG_CARD, background=BG_MID, foreground=TEXT_PRI, padding=4)
+
+    def _build_ui(self):
+        # Header bar
+        hdr = tk.Frame(self, bg=BG_MID, pady=10, padx=16)
+        hdr.pack(fill="x")
+
+        tk.Label(hdr, text="Interpresona", bg=BG_MID, fg=ACCENT_LIGHT, font=("Segoe UI", 16, "bold")).pack(side="left")
+        tk.Label(hdr, text=" Wizard", bg=BG_MID, fg=TEXT_PRI, font=("Segoe UI", 16)).pack(side="left")
+        tk.Label(hdr, text=f"v{__version__}", bg=BG_MID, fg=TEXT_DIM, font=FONT_SMALL).pack(side="left", padx=10, pady=4)
+
+        # Advanced Mode Switch Button
+        FlatButton(hdr, text="Modalità Avanzata ⚙", command=self._switch_to_advanced, accent=False).pack(side="right")
+
+        # Top Stepper Bar
+        self._stepper_frame = tk.Frame(self, bg=BG_DARK, pady=14)
+        self._stepper_frame.pack(fill="x", padx=16)
+
+        self._step_labels = []
+        steps_info = [
+            ("1", "Origine Dati"),
+            ("2", "Traduttore"),
+            ("3", "Destinazione"),
+            ("4", "Esecuzione"),
+        ]
+        for i, (num, name) in enumerate(steps_info):
+            lbl_frame = tk.Frame(self._stepper_frame, bg=BG_DARK)
+            lbl_frame.pack(side="left", expand=True)
+
+            circle = tk.Label(lbl_frame, text=num, bg=BG_CARD, fg=TEXT_SEC, font=("Segoe UI", 10, "bold"), width=3, height=1)
+            circle.pack(side="left", padx=4)
+
+            name_lbl = tk.Label(lbl_frame, text=name, bg=BG_DARK, fg=TEXT_SEC, font=FONT_BODY)
+            name_lbl.pack(side="left", padx=4)
+
+            self._step_labels.append((circle, name_lbl))
+
+        # Main content card stack
+        self._card_container = tk.Frame(self, bg=BG_DARK, padx=16, pady=4)
+        self._card_container.pack(fill="both", expand=True)
+
+        # Create step cards
+        self._card_step1 = self._build_step1_card()
+        self._card_step2 = self._build_step2_card()
+        self._card_step3 = self._build_step3_card()
+        self._card_step4 = self._build_step4_card()
+
+        # Bottom navigation bar
+        nav_bar = tk.Frame(self, bg=BG_MID, pady=10, padx=16)
+        nav_bar.pack(fill="x", side="bottom")
+
+        self._btn_back = FlatButton(nav_bar, text="◀ Indietro", command=self._prev_step)
+        self._btn_back.pack(side="left")
+
+        self._btn_next = FlatButton(nav_bar, text="Avanti ▶", command=self._next_step, accent=True)
+        self._btn_next.pack(side="right")
+
+    # ------------------------------------------------------------------
+    # Step 1: Input Source Card
+    # ------------------------------------------------------------------
+    def _build_step1_card(self) -> tk.Frame:
+        card = tk.Frame(self._card_container, bg=BG_CARD, padx=20, pady=20, bd=1, highlightbackground=BORDER, highlightthickness=1)
+
+        tk.Label(card, text="Passo 1: Scegli l'origine dei dati da tradurre", bg=BG_CARD, fg=ACCENT_LIGHT, font=FONT_HEAD).pack(anchor="w", pady=(0, 4))
+        tk.Label(card, text="Seleziona la modalità di caricamento dei file di gioco o estratti:", bg=BG_CARD, fg=TEXT_SEC, font=FONT_BODY).pack(anchor="w", pady=(0, 16))
+
+        # Option A: SQPACK Game Folder
+        opt_sq = tk.Frame(card, bg=BG_MID, padx=14, pady=12, bd=1, highlightbackground=BORDER, highlightthickness=1)
+        opt_sq.pack(fill="x", pady=6)
+
+        rb_sq = tk.Radiobutton(opt_sq, text="🎮 Cartella di Gioco FFXIV (SqPack completo)", variable=self._source_type, value="sqpack",
+                               bg=BG_MID, fg=TEXT_PRI, selectcolor=BG_CARD, activebackground=BG_MID, font=FONT_SUB, command=self._update_step1_inputs)
+        rb_sq.pack(anchor="w")
+        tk.Label(opt_sq, text="Traduce direttamente i file .exd leggendo gli archivi di gioco (consigliato per traduzioni massive)", bg=BG_MID, fg=TEXT_DIM, font=FONT_SMALL).pack(anchor="w", padx=24, pady=(2, 8))
+
+        sq_entry_frame = tk.Frame(opt_sq, bg=BG_MID)
+        sq_entry_frame.pack(fill="x", padx=24)
+        tk.Entry(sq_entry_frame, textvariable=self._game_path_var, bg=BG_CARD, fg=TEXT_PRI, font=FONT_BODY, bd=1, relief="solid").pack(side="left", fill="x", expand=True, padx=(0, 8))
+        FlatButton(sq_entry_frame, text="Sfoglia...", command=self._browse_game_dir).pack(side="right")
+
+        # Option B: Folder with EXH/EXD Files
+        opt_folder = tk.Frame(card, bg=BG_MID, padx=14, pady=12, bd=1, highlightbackground=BORDER, highlightthickness=1)
+        opt_folder.pack(fill="x", pady=6)
+
+        rb_folder = tk.Radiobutton(opt_folder, text="📂 Cartella di File Estratti (.exh / .exd)", variable=self._source_type, value="folder",
+                                   bg=BG_MID, fg=TEXT_PRI, selectcolor=BG_CARD, activebackground=BG_MID, font=FONT_SUB, command=self._update_step1_inputs)
+        rb_folder.pack(anchor="w")
+        tk.Label(opt_folder, text="Traduce tutti i file .exd estratti presenti all'interno di una cartella locale sul tuo PC", bg=BG_MID, fg=TEXT_DIM, font=FONT_SMALL).pack(anchor="w", padx=24, pady=(2, 8))
+
+        f_entry_frame = tk.Frame(opt_folder, bg=BG_MID)
+        f_entry_frame.pack(fill="x", padx=24)
+        tk.Entry(f_entry_frame, textvariable=self._input_folder_var, bg=BG_CARD, fg=TEXT_PRI, font=FONT_BODY, bd=1, relief="solid").pack(side="left", fill="x", expand=True, padx=(0, 8))
+        FlatButton(f_entry_frame, text="Sfoglia...", command=self._browse_input_folder).pack(side="right")
+
+        # Option C: Single File Pair
+        opt_file = tk.Frame(card, bg=BG_MID, padx=14, pady=12, bd=1, highlightbackground=BORDER, highlightthickness=1)
+        opt_file.pack(fill="x", pady=6)
+
+        rb_file = tk.Radiobutton(opt_file, text="📄 Singolo File EXD", variable=self._source_type, value="file",
+                                 bg=BG_MID, fg=TEXT_PRI, selectcolor=BG_CARD, activebackground=BG_MID, font=FONT_SUB, command=self._update_step1_inputs)
+        rb_file.pack(anchor="w")
+
+        file_entry_frame = tk.Frame(opt_file, bg=BG_MID)
+        file_entry_frame.pack(fill="x", padx=24, pady=(6, 0))
+        tk.Entry(file_entry_frame, textvariable=self._input_file_var, bg=BG_CARD, fg=TEXT_PRI, font=FONT_BODY, bd=1, relief="solid").pack(side="left", fill="x", expand=True, padx=(0, 8))
+        FlatButton(file_entry_frame, text="Sfoglia...", command=self._browse_input_file).pack(side="right")
+
+        return card
+
+    def _update_step1_inputs(self):
+        st = self._source_type.get()
+
+    def _browse_game_dir(self):
+        path = filedialog.askdirectory(title="Seleziona cartella di gioco FFXIV (o sqpack)")
+        if path:
+            self._game_path_var.set(path)
+            self._source_type.set("sqpack")
+
+    def _browse_input_folder(self):
+        path = filedialog.askdirectory(title="Seleziona cartella contenente i file .exh/.exd")
+        if path:
+            self._input_folder_var.set(path)
+            self._source_type.set("folder")
+
+    def _browse_input_file(self):
+        path = filedialog.askopenfilename(title="Seleziona file .exd", filetypes=[("FFXIV EXD Data", "*.exd"), ("Tutti i file", "*.*")])
+        if path:
+            self._input_file_var.set(path)
+            self._source_type.set("file")
+
+    # ------------------------------------------------------------------
+    # Step 2: Translation Service Setup Card
+    # ------------------------------------------------------------------
+    def _build_step2_card(self) -> tk.Frame:
+        card = tk.Frame(self._card_container, bg=BG_CARD, padx=20, pady=20, bd=1, highlightbackground=BORDER, highlightthickness=1)
+
+        tk.Label(card, text="Passo 2: Configura il servizio di Traduzione", bg=BG_CARD, fg=ACCENT_LIGHT, font=FONT_HEAD).pack(anchor="w", pady=(0, 4))
+        tk.Label(card, text="Scegli il motore di traduzione e verifica che la connessione sia attiva:", bg=BG_CARD, fg=TEXT_SEC, font=FONT_BODY).pack(anchor="w", pady=(0, 16))
+
+        # Backend Selector
+        b_frame = tk.Frame(card, bg=BG_CARD)
+        b_frame.pack(fill="x", pady=6)
+        tk.Label(b_frame, text="Motore Traduzione:", bg=BG_CARD, fg=TEXT_PRI, font=FONT_SUB).pack(side="left", padx=(0, 10))
+
+        cmb = ttk.Combobox(b_frame, textvariable=self._backend_var, values=["libretranslate", "deepl", "mock"], state="readonly", width=22)
+        cmb.pack(side="left")
+        cmb.bind("<<ComboboxSelected>>", lambda e: self._update_step2_backend())
+
+        # Config Panel Frame
+        self._cfg_panel = tk.Frame(card, bg=BG_MID, padx=16, pady=16, bd=1, highlightbackground=BORDER, highlightthickness=1)
+        self._cfg_panel.pack(fill="x", pady=14)
+
+        # LibreTranslate Fields
+        self._libre_frame = tk.Frame(self._cfg_panel, bg=BG_MID)
+        tk.Label(self._libre_frame, text="URL Server LibreTranslate:", bg=BG_MID, fg=TEXT_PRI, font=FONT_BODY).pack(anchor="w")
+        tk.Entry(self._libre_frame, textvariable=self._libre_url_var, bg=BG_CARD, fg=TEXT_PRI, font=FONT_BODY, bd=1, relief="solid").pack(fill="x", pady=(4, 8))
+        tk.Label(self._libre_frame, text="Endpoint predefinito impostato su https://translate.systemofagamer.it", bg=BG_MID, fg=TEXT_DIM, font=FONT_SMALL).pack(anchor="w")
+
+        # DeepL Fields
+        self._deepl_frame = tk.Frame(self._cfg_panel, bg=BG_MID)
+        tk.Label(self._deepl_frame, text="Chiave API DeepL (Authentication Key):", bg=BG_MID, fg=TEXT_PRI, font=FONT_BODY).pack(anchor="w")
+        tk.Entry(self._deepl_frame, textvariable=self._deepl_key_var, bg=BG_CARD, fg=TEXT_PRI, font=FONT_BODY, bd=1, relief="solid").pack(fill="x", pady=(4, 8))
+
+        # Language selection
+        lang_frame = tk.Frame(self._cfg_panel, bg=BG_MID)
+        lang_frame.pack(fill="x", pady=(12, 0))
+
+        tk.Label(lang_frame, text="Da Lingua:", bg=BG_MID, fg=TEXT_SEC, font=FONT_BODY).pack(side="left", padx=(0, 6))
+        tk.Entry(lang_frame, textvariable=self._source_lang_var, width=6, bg=BG_CARD, fg=TEXT_PRI, font=FONT_BODY).pack(side="left", padx=(0, 20))
+
+        tk.Label(lang_frame, text="A Lingua:", bg=BG_MID, fg=TEXT_SEC, font=FONT_BODY).pack(side="left", padx=(0, 6))
+        tk.Entry(lang_frame, textvariable=self._target_lang_var, width=6, bg=BG_CARD, fg=TEXT_PRI, font=FONT_BODY).pack(side="left")
+
+        # Test Connection Button
+        test_frame = tk.Frame(card, bg=BG_CARD)
+        test_frame.pack(fill="x", pady=10)
+
+        FlatButton(test_frame, text="⚡ Testa Connessione Servizio", command=self._test_connection).pack(side="left")
+        self._test_result_lbl = tk.Label(test_frame, text="", bg=BG_CARD, font=FONT_SUB)
+        self._test_result_lbl.pack(side="left", padx=14)
+
+        self._update_step2_backend()
+        return card
+
+    def _update_step2_backend(self):
+        b = self._backend_var.get()
+        self._libre_frame.pack_forget()
+        self._deepl_frame.pack_forget()
+
+        if b == "libretranslate":
+            self._libre_frame.pack(fill="x", before=self._cfg_panel.winfo_children()[-1])
+        elif b == "deepl":
+            self._deepl_frame.pack(fill="x", before=self._cfg_panel.winfo_children()[-1])
+
+    def _test_connection(self):
+        self._test_result_lbl.config(text="Verifica in corso...", fg=WARNING)
+        self.update()
+
+        def do_test():
+            try:
+                b = self._backend_var.get()
+                if b == "libretranslate":
+                    t = LibreTranslateTranslator(url=self._libre_url_var.get(), source_lang=self._source_lang_var.get(), target_lang=self._target_lang_var.get())
+                elif b == "deepl":
+                    t = DeepLTranslator(api_key=self._deepl_key_var.get(), source_lang=self._source_lang_var.get(), target_lang=self._target_lang_var.get())
+                else:
+                    t = MockTranslator()
+
+                res = t.translate(["Hello {0} world"])
+                if res and res[0]:
+                    self.after(0, lambda: self._test_result_lbl.config(text="✓ Connessione Riuscita!", fg=SUCCESS))
+                else:
+                    self.after(0, lambda: self._test_result_lbl.config(text="⚠ Nessun testo restituito", fg=WARNING))
+            except Exception as exc:
+                err_msg = str(exc)[:60]
+                self.after(0, lambda: self._test_result_lbl.config(text=f"✖ Errore: {err_msg}", fg=ERROR_COL))
+
+        threading.Thread(target=do_test, daemon=True).start()
+
+    # ------------------------------------------------------------------
+    # Step 3: Destination Card
+    # ------------------------------------------------------------------
+    def _build_step3_card(self) -> tk.Frame:
+        card = tk.Frame(self._card_container, bg=BG_CARD, padx=20, pady=20, bd=1, highlightbackground=BORDER, highlightthickness=1)
+
+        tk.Label(card, text="Passo 3: Seleziona dove salvare i file tradotti", bg=BG_CARD, fg=ACCENT_LIGHT, font=FONT_HEAD).pack(anchor="w", pady=(0, 4))
+        tk.Label(card, text="I file tradotti (.exd ed .exh) verranno salvati nella cartella specificata:", bg=BG_CARD, fg=TEXT_SEC, font=FONT_BODY).pack(anchor="w", pady=(0, 16))
+
+        out_box = tk.Frame(card, bg=BG_MID, padx=16, pady=16, bd=1, highlightbackground=BORDER, highlightthickness=1)
+        out_box.pack(fill="x", pady=10)
+
+        tk.Label(out_box, text="Cartella di Destinazione Output:", bg=BG_MID, fg=TEXT_PRI, font=FONT_SUB).pack(anchor="w", pady=(0, 6))
+
+        e_frame = tk.Frame(out_box, bg=BG_MID)
+        e_frame.pack(fill="x")
+        tk.Entry(e_frame, textvariable=self._output_folder_var, bg=BG_CARD, fg=TEXT_PRI, font=FONT_BODY, bd=1, relief="solid").pack(side="left", fill="x", expand=True, padx=(0, 8))
+        FlatButton(e_frame, text="Sfoglia...", command=self._browse_output_folder).pack(side="right")
+
+        tk.Label(card, text="💡 Suggerimento: Puoi creare una nuova cartella qualsiasi per conservare i file tradotti pronti per il gioco.", bg=BG_CARD, fg=TEXT_DIM, font=FONT_SMALL).pack(anchor="w", pady=(20, 0))
+
+        return card
+
+    def _browse_output_folder(self):
+        path = filedialog.askdirectory(title="Seleziona cartella di destinazione output")
+        if path:
+            self._output_folder_var.set(path)
+
+    # ------------------------------------------------------------------
+    # Step 4: Execution Progress Card
+    # ------------------------------------------------------------------
+    def _build_step4_card(self) -> tk.Frame:
+        card = tk.Frame(self._card_container, bg=BG_CARD, padx=20, pady=20, bd=1, highlightbackground=BORDER, highlightthickness=1)
+
+        tk.Label(card, text="Passo 4: Esecuzione e Stato Traduzione", bg=BG_CARD, fg=ACCENT_LIGHT, font=FONT_HEAD).pack(anchor="w", pady=(0, 4))
+        self._exec_subtitle = tk.Label(card, text="Pronto per iniziare. Clicca su 'Avvia Traduzione' per cominciare.", bg=BG_CARD, fg=TEXT_SEC, font=FONT_BODY)
+        self._exec_subtitle.pack(anchor="w", pady=(0, 12))
+
+        # Progress bar + labels
+        self._progress_bar = ttk.Progressbar(card, mode="determinate")
+        self._progress_bar.pack(fill="x", pady=(4, 8))
+
+        self._status_var = tk.StringVar(value="In attesa dell'avvio...")
+        tk.Label(card, textvariable=self._status_var, bg=BG_CARD, fg=TEXT_PRI, font=FONT_SUB).pack(anchor="w", pady=(0, 10))
+
+        # Control buttons bar during execution
+        ctl_bar = tk.Frame(card, bg=BG_CARD)
+        ctl_bar.pack(fill="x", pady=(0, 10))
+
+        self._btn_start_exec = FlatButton(ctl_bar, text="🚀 Avvia Traduzione", command=self._start_execution, accent=True)
+        self._btn_start_exec.pack(side="left")
+
+        self._btn_stop_exec = FlatButton(ctl_bar, text="⏹ Interrompi", command=self._stop_execution, danger=True)
+        self._btn_stop_exec.pack(side="left", padx=10)
+        self._btn_stop_exec.config(state="disabled")
+
+        self._btn_open_out = FlatButton(ctl_bar, text="📁 Apri Cartella Output", command=self._open_output_folder)
+        self._btn_open_out.pack(side="right")
+        self._btn_open_out.config(state="disabled")
+
+        # Live log view
+        tk.Label(card, text="Registro Eventi Traduzione:", bg=BG_CARD, fg=TEXT_DIM, font=FONT_SMALL).pack(anchor="w", pady=(8, 2))
+        self._log_text = scrolledtext.ScrolledText(card, bg=BG_MID, fg=TEXT_PRI, font=FONT_MONO, height=10, state="disabled", relief="flat")
+        self._log_text.pack(fill="both", expand=True)
+
+        self._log_text.tag_config("info", foreground=TEXT_SEC)
+        self._log_text.tag_config("success", foreground=SUCCESS)
+        self._log_text.tag_config("warning", foreground=WARNING)
+        self._log_text.tag_config("error", foreground=ERROR_COL)
+
+        return card
+
+    def _log(self, msg: str, level: str = "info"):
+        self._log_text.config(state="normal")
+        self._log_text.insert("end", msg + "\n", level)
+        self._log_text.see("end")
+        self._log_text.config(state="disabled")
+
+    def _open_output_folder(self):
+        out_dir = self._output_folder_var.get()
+        if os.path.exists(out_dir):
+            import webbrowser
+            webbrowser.open(out_dir)
+
+    # ------------------------------------------------------------------
+    # Step Navigation Logic
+    # ------------------------------------------------------------------
+    def _show_step(self, step_num: int):
+        self._current_step = step_num
+
+        # Hide all step cards
+        for card in (self._card_step1, self._card_step2, self._card_step3, self._card_step4):
+            card.pack_forget()
+
+        # Update step bar styling
+        for idx, (circle, name_lbl) in enumerate(self._step_labels, start=1):
+            if idx == step_num:
+                circle.config(bg=ACCENT, fg=TEXT_PRI)
+                name_lbl.config(fg=ACCENT_LIGHT, font=FONT_SUB)
+            elif idx < step_num:
+                circle.config(bg=SUCCESS, fg=TEXT_PRI)
+                name_lbl.config(fg=TEXT_PRI, font=FONT_BODY)
+            else:
+                circle.config(bg=BG_CARD, fg=TEXT_SEC)
+                name_lbl.config(fg=TEXT_SEC, font=FONT_BODY)
+
+        # Show target card
+        if step_num == 1:
+            self._card_step1.pack(fill="both", expand=True)
+            self._btn_back.config(state="disabled")
+            self._btn_next.config(state="normal", text="Avanti ▶")
+        elif step_num == 2:
+            self._card_step2.pack(fill="both", expand=True)
+            self._btn_back.config(state="normal")
+            self._btn_next.config(state="normal", text="Avanti ▶")
+        elif step_num == 3:
+            self._card_step3.pack(fill="both", expand=True)
+            self._btn_back.config(state="normal")
+            self._btn_next.config(state="normal", text="Vai all'Esecuzione ▶")
+        elif step_num == 4:
+            self._card_step4.pack(fill="both", expand=True)
+            self._btn_back.config(state="normal" if not self._is_running else "disabled")
+            self._btn_next.config(state="disabled")
+
+    def _next_step(self):
+        if self._current_step == 1:
+            # Validate input selection
+            st = self._source_type.get()
+            if st == "sqpack" and not self._game_path_var.get():
+                messagebox.showwarning("Attenzione", "Seleziona la cartella di gioco FFXIV prima di proseguire.")
+                return
+            elif st == "folder" and not self._input_folder_var.get():
+                messagebox.showwarning("Attenzione", "Seleziona la cartella contenente i file prima di proseguire.")
+                return
+            elif st == "file" and not self._input_file_var.get():
+                messagebox.showwarning("Attenzione", "Seleziona il file .exd prima di proseguire.")
+                return
+            self._show_step(2)
+        elif self._current_step == 2:
+            b = self._backend_var.get()
+            if b == "libretranslate" and not self._libre_url_var.get():
+                messagebox.showwarning("Attenzione", "Inserisci l'URL del server LibreTranslate.")
+                return
+            elif b == "deepl" and not self._deepl_key_var.get():
+                messagebox.showwarning("Attenzione", "Inserisci la chiave API DeepL.")
+                return
+            self._show_step(3)
+        elif self._current_step == 3:
+            if not self._output_folder_var.get():
+                messagebox.showwarning("Attenzione", "Seleziona la cartella di destinazione output.")
+                return
+            self._show_step(4)
+
+    def _prev_step(self):
+        if self._current_step > 1 and not self._is_running:
+            self._show_step(self._current_step - 1)
+
+    # ------------------------------------------------------------------
+    # Step 4 Execution Workflow
+    # ------------------------------------------------------------------
+    def _create_translator_instance(self) -> BaseTranslator:
+        b = self._backend_var.get()
+        src = self._source_lang_var.get().strip() or "en"
+        tgt = self._target_lang_var.get().strip() or "it"
+
+        if b == "libretranslate":
+            url = self._libre_url_var.get().strip() or "https://translate.systemofagamer.it"
+            return LibreTranslateTranslator(url=url, source_lang=src, target_lang=tgt)
+        elif b == "deepl":
+            key = self._deepl_key_var.get().strip()
+            return DeepLTranslator(api_key=key, source_lang=src, target_lang=tgt)
+        else:
+            return MockTranslator()
+
+    def _start_execution(self):
+        if self._is_running:
+            return
+
+        self._is_running = True
+        self._is_cancelled = False
+        self._btn_start_exec.config(state="disabled")
+        self._btn_stop_exec.config(state="normal")
+        self._btn_open_out.config(state="disabled")
+        self._btn_back.config(state="disabled")
+        self._progress_bar["value"] = 0
+
+        # Launch execution worker thread
+        threading.Thread(target=self._worker_execute, daemon=True).start()
+
+    def _stop_execution(self):
+        if self._is_running:
+            self._is_cancelled = True
+            self._status_var.set("Interruzione in corso...")
+            self._log("Richiesta di interruzione inviata dall'utente.", "warning")
+
+    def _worker_execute(self):
+        st = self._source_type.get()
+        out_dir = Path(self._output_folder_var.get())
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        try:
+            translator = self._create_translator_instance()
+            self._log(f"Inizializzato motore {translator.name} ({self._source_lang_var.get()} ➔ {self._target_lang_var.get()})", "info")
+
+            if st == "sqpack":
+                self._execute_sqpack_batch(translator, out_dir)
+            elif st == "folder":
+                self._execute_folder_batch(translator, out_dir)
+            else:
+                self._execute_single_file(translator, out_dir)
+
+            if not self._is_cancelled:
+                self.after(0, lambda: self._status_var.set("✓ Traduzione completata con successo!"))
+                self.after(0, lambda: self._log("Tutte le operazioni sono state completate.", "success"))
+                self.after(0, lambda: self._btn_open_out.config(state="normal"))
+        except Exception as exc:
+            err_msg = str(exc)
+            self.after(0, lambda: self._status_var.set(f"Errore: {err_msg[:60]}"))
+            self.after(0, lambda: self._log(f"Errore durante l'esecuzione: {err_msg}", "error"))
+        finally:
+            self._is_running = False
+            self.after(0, lambda: self._btn_start_exec.config(state="normal"))
+            self.after(0, lambda: self._btn_stop_exec.config(state="disabled"))
+            self.after(0, lambda: self._btn_back.config(state="normal"))
+
+    def _execute_sqpack_batch(self, translator: BaseTranslator, out_dir: Path):
+        game_path = Path(self._game_path_var.get())
+        self._log(f"Lettura archivi SqPack da {game_path}...", "info")
+
+        reader = SqPackReader.from_game_directory(game_path)
+        sheets = reader.list_exd_sheets()
+        total_sheets = len(sheets)
+        self._log(f"Trovati {total_sheets} fogli EXD da processare.", "info")
+
+        import re
+        technical_key_pat = re.compile(r"^[A-Z][A-Z0-9_]{4,80}$")
+        success_count = 0
+
+        for idx, sheet_name in enumerate(sheets, start=1):
+            if self._is_cancelled:
+                self._log("Esecuzione interrotta dall'utente.", "warning")
+                break
+
+            self.after(0, lambda i=idx, tot=total_sheets, name=sheet_name: [
+                self._progress_bar.config(value=int(i / tot * 100)),
+                self._status_var.set(f"Processando foglio {i}/{tot}: {name}")
+            ])
+
+            exh_p = SqPackReader.exh_path(sheet_name)
+            if not reader.file_exists(exh_p):
+                continue
+
+            try:
+                exh_bytes = reader.read_file(exh_p)
+                schema = EXHParser(exh_bytes).result
+                n_pages = len(schema.pages) if schema.pages else 1
+
+                exd_pages = []
+                for p_idx in range(n_pages):
+                    page_bytes = None
+                    for candidate_lang in ("_en", "_ja", "_de", "_fr", ""):
+                        c_path = SqPackReader.exd_path(sheet_name, page=p_idx, lang=candidate_lang)
+                        if reader.file_exists(c_path):
+                            page_bytes = reader.read_file(c_path)
+                            break
+                    if page_bytes is not None:
+                        exd_pages.append(page_bytes)
+                    else:
+                        break
+
+                if not exd_pages:
+                    continue
+
+                pipeline = TranslationPipeline(exh_bytes, exd_pages)
+                records = pipeline.extract()
+
+                targets = []
+                for rec in records:
+                    t_str = rec.masked_text.strip()
+                    if technical_key_pat.match(t_str) or t_str.startswith("TEXT_") or t_str.startswith("KEY_"):
+                        continue
+                    if not rec.translated_text and not rec.errors:
+                        targets.append(rec)
+
+                if targets:
+                    self._log(f"Foglio {sheet_name}: traduzione di {len(targets)} stringhe...", "info")
+                    CHUNK = 20
+                    for c_start in range(0, len(targets), CHUNK):
+                        if self._is_cancelled:
+                            break
+                        chunk = targets[c_start: c_start + CHUNK]
+                        texts = [r.masked_text for r in chunk]
+                        translated_list = translator.translate(texts)
+                        for rec, trans in zip(chunk, translated_list):
+                            ph_err = validate_placeholders(trans, rec.placeholders)
+                            if not ph_err:
+                                rec.translated_text = trans
+
+                # Save translated EXD/EXH to out_dir
+                safe_name = sheet_name.replace("/", "_")
+                page_data = pipeline.inject_all()
+                for p_id, binary in page_data.items():
+                    (out_dir / f"{safe_name}_{p_id}.exd").write_bytes(binary)
+                (out_dir / f"{safe_name}.exh").write_bytes(exh_bytes)
+
+                success_count += 1
+            except Exception as exc:
+                self._log(f"Errore su foglio {sheet_name}: {exc}", "error")
+
+        self._log(f"Completati {success_count} fogli salvati in {out_dir}", "success")
+
+    def _execute_folder_batch(self, translator: BaseTranslator, out_dir: Path):
+        inp_dir = Path(self._input_folder_var.get())
+        exh_files = list(inp_dir.glob("*.exh"))
+        total = len(exh_files)
+        self._log(f"Trovati {total} file .exh nella cartella.", "info")
+
+        import re
+        technical_key_pat = re.compile(r"^[A-Z][A-Z0-9_]{4,80}$")
+
+        for idx, exh_file in enumerate(exh_files, start=1):
+            if self._is_cancelled:
+                break
+            sheet_stem = exh_file.stem
+            self.after(0, lambda i=idx, tot=total, s=sheet_stem: [
+                self._progress_bar.config(value=int(i / tot * 100)),
+                self._status_var.set(f"Processando {i}/{tot}: {s}")
+            ])
+
+            exd_files = sorted(inp_dir.glob(f"{sheet_stem}_*.exd"))
+            if not exd_files:
+                continue
+
+            try:
+                exh_bytes = exh_file.read_bytes()
+                exd_pages = [f.read_bytes() for f in exd_files]
+                pipeline = TranslationPipeline(exh_bytes, exd_pages)
+                records = pipeline.extract()
+
+                targets = []
+                for rec in records:
+                    t_str = rec.masked_text.strip()
+                    if technical_key_pat.match(t_str) or t_str.startswith("TEXT_") or t_str.startswith("KEY_"):
+                        continue
+                    if not rec.translated_text and not rec.errors:
+                        targets.append(rec)
+
+                if targets:
+                    self._log(f"File {sheet_stem}: traduzione di {len(targets)} stringhe...", "info")
+                    CHUNK = 20
+                    for c_start in range(0, len(targets), CHUNK):
+                        if self._is_cancelled:
+                            break
+                        chunk = targets[c_start: c_start + CHUNK]
+                        texts = [r.masked_text for r in chunk]
+                        translated_list = translator.translate(texts)
+                        for rec, trans in zip(chunk, translated_list):
+                            ph_err = validate_placeholders(trans, rec.placeholders)
+                            if not ph_err:
+                                rec.translated_text = trans
+
+                page_data = pipeline.inject_all()
+                for page_id, binary in page_data.items():
+                    (out_dir / f"{sheet_stem}_{page_id}.exd").write_bytes(binary)
+                (out_dir / exh_file.name).write_bytes(exh_bytes)
+            except Exception as exc:
+                self._log(f"Errore su {sheet_stem}: {exc}", "error")
+
+    def _execute_single_file(self, translator: BaseTranslator, out_dir: Path):
+        exd_path = Path(self._input_file_var.get())
+        sheet_stem = exd_path.stem.rsplit("_", 1)[0] if "_" in exd_path.stem else exd_path.stem
+        exh_path = exd_path.parent / f"{sheet_stem}.exh"
+
+        if not exh_path.exists():
+            raise FileNotFoundError(f"File schema EXH non trovato in {exh_path}")
+
+        self._log(f"Caricamento {exd_path.name} e {exh_path.name}...", "info")
+        exh_bytes = exh_path.read_bytes()
+        exd_bytes = exd_path.read_bytes()
+
+        pipeline = TranslationPipeline(exh_bytes, [exd_bytes])
+        records = pipeline.extract()
+
+        targets = [r for r in records if r.masked_text.strip() and not r.translated_text and not r.errors]
+        self._log(f"Estratte {len(targets)} stringhe traducibili.", "info")
+
+        if targets:
+            CHUNK = 20
+            for c_start in range(0, len(targets), CHUNK):
+                if self._is_cancelled:
+                    break
+                chunk = targets[c_start: c_start + CHUNK]
+                texts = [r.masked_text for r in chunk]
+                translated_list = translator.translate(texts)
+                for rec, trans in zip(chunk, translated_list):
+                    ph_err = validate_placeholders(trans, rec.placeholders)
+                    if not ph_err:
+                        rec.translated_text = trans
+
+                pct = int((c_start + len(chunk)) / len(targets) * 100)
+                self.after(0, lambda p=pct: self._progress_bar.config(value=p))
+
+        page_data = pipeline.inject_all()
+        binary = page_data.get(0, b"")
+        (out_dir / exd_path.name).write_bytes(binary)
+        (out_dir / exh_path.name).write_bytes(exh_bytes)
+        self._log(f"Salvati {exd_path.name} e {exh_path.name} in {out_dir}", "success")
+
+    # ------------------------------------------------------------------
+    # Mode Switcher Helper
+    # ------------------------------------------------------------------
+    def _switch_to_advanced(self):
+        self.destroy()
+        from interpresona.gui import main as main_advanced
+        main_advanced()
+
+    def _check_updates_bg(self):
+        try:
+            url = "https://api.github.com/repos/Keyain-Zasky/Interpresona/releases/latest"
+            req = urllib.request.Request(url, headers={"User-Agent": "Interpresona-SimpleWizard"})
+            ctx = ssl._create_unverified_context()
+            with urllib.request.urlopen(req, context=ctx, timeout=5) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                latest_tag = data.get("tag_name", "v0.0.0").lstrip("v")
+                current_tag = __version__.lstrip("v")
+
+                latest_parts = [int(x) for x in latest_tag.split(".") if x.isdigit()]
+                current_parts = [int(x) for x in current_tag.split(".") if x.isdigit()]
+
+                if latest_parts > current_parts:
+                    self.after(500, lambda: messagebox.showinfo(
+                        "Aggiornamento Disponibile",
+                        f"È disponibile una nuova versione di Interpresona ({data.get('tag_name')}).\nVersione attuale: v{__version__}."
+                    ))
+        except Exception:
+            pass
+
+
+def main():
+    app = InterpresonaSimpleApp()
+    app.mainloop()
+
+
+if __name__ == "__main__":
+    main()
