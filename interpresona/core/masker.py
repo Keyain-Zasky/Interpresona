@@ -18,9 +18,9 @@ from typing import Optional
 
 from .parser import decode_varint
 
-# Placeholder format:  ⟪n⟫   (uses Unicode brackets unlikely to appear in text)
-_PLACEHOLDER_RE = re.compile(r"⟪(\d+)⟫")
-_PLACEHOLDER_FMT = "⟪{n}⟫"
+# Placeholder format:  {n}   (standard format string brackets recognised by NMT tokenisers)
+_PLACEHOLDER_RE = re.compile(r"\{(\d+)\}")
+_PLACEHOLDER_FMT = "{{{n}}}"
 
 
 @dataclass
@@ -126,7 +126,7 @@ def unmask(translated: str, placeholders: dict[int, bytes]) -> bytes:
         n = int(m.group(1))
         if n not in placeholders:
             raise ValueError(
-                f"unmask: placeholder ⟪{n}⟫ not found in map "
+                f"unmask: placeholder {{{n}}} not found in map "
                 f"(MT engine may have altered or deleted it)"
             )
         # Append text before this placeholder
@@ -135,11 +135,8 @@ def unmask(translated: str, placeholders: dict[int, bytes]) -> bytes:
         # If we inserted an artificial space between consecutive placeholders, strip it now
         # so that the original byte layout has no unwanted spaces
         if text_chunk.endswith(" ") and last > 0:
-            # Check if the previous token was a placeholder
-            # By checking if the character before the space was a closing bracket '⟫'
-            # and matching the placeholder structure
             before_space = translated[last: m.start() - 1]
-            if before_space.endswith("⟫"):
+            if before_space.endswith("}"):
                 text_chunk = text_chunk[:-1]
                 
         result.extend(text_chunk.encode("utf-8"))
@@ -164,7 +161,7 @@ def validate_placeholders(translated: str, expected: dict[int, bytes]) -> list[s
     missing = expected_indices - found_indices
     extra = found_indices - expected_indices
     for n in sorted(missing):
-        errors.append(f"Placeholder ⟪{n}⟫ was removed by the MT engine")
+        errors.append(f"Placeholder {{{n}}} was removed by the MT engine")
     for n in sorted(extra):
-        errors.append(f"Unknown placeholder ⟪{n}⟫ introduced by the MT engine")
+        errors.append(f"Unknown placeholder {{{n}}} introduced by the MT engine")
     return errors

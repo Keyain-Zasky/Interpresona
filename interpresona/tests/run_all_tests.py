@@ -123,9 +123,9 @@ def test_mask_control_codes_roundtrip():
     raw = (b"Say " + make_character_name_control() + b" and " +
            make_color_control(3) + b"continue." + make_reset_control())
     result = mask(raw)
-    assert "⟪0⟫" in result.text
-    assert "⟪1⟫" in result.text
-    assert "⟪2⟫" in result.text
+    assert "{0}" in result.text
+    assert "{1}" in result.text
+    assert "{2}" in result.text
     assert len(result.placeholders) == 3
     restored = unmask(result.text, result.placeholders)
     assert restored == raw, f"Roundtrip failed:\n  exp={raw!r}\n  got={restored!r}"
@@ -135,7 +135,7 @@ def test_mask_consecutive_placeholders():
     raw = make_character_name_control() + make_color_control(1) + make_reset_control()
     result = mask(raw)
     # Check that spaces were inserted between adjacent placeholders
-    assert result.text == "⟪0⟫ ⟪1⟫ ⟪2⟫"
+    assert result.text == "{0} {1} {2}"
     restored = unmask(result.text, result.placeholders)
     assert restored == raw
 
@@ -143,14 +143,14 @@ def test_mask_consecutive_placeholders():
 def test_mask_placeholder_at_start():
     raw = make_character_name_control() + b" joined the battle!"
     result = mask(raw)
-    assert result.text.startswith("⟪0⟫")
+    assert result.text.startswith("{0}")
     assert unmask(result.text, result.placeholders) == raw
 
 
 def test_mask_placeholder_at_end():
     raw = b"Game Over" + make_reset_control()
     result = mask(raw)
-    assert result.text.endswith("⟪0⟫")
+    assert result.text.endswith("{0}")
     assert unmask(result.text, result.placeholders) == raw
 
 
@@ -173,14 +173,14 @@ def test_validate_placeholders_extra():
     raw = b"Hello"
     result = mask(raw)
     # MT hallucinated a placeholder
-    errors = validate_placeholders("Hello ⟪0⟫", result.placeholders)
+    errors = validate_placeholders("Hello {0}", result.placeholders)
     assert len(errors) == 1
     assert "introduced" in errors[0].lower()
 
 
 def test_unmask_unknown_placeholder_raises():
     try:
-        unmask("Hello ⟪99⟫ world", {})
+        unmask("Hello {99} world", {})
         assert False, "Should have raised ValueError"
     except ValueError:
         pass
@@ -268,7 +268,7 @@ def test_pipeline_control_codes_masked_in_records():
     pipeline = TranslationPipeline(exh, exd)
     records = pipeline.extract()
     rec0 = next(r for r in records if r.row_id == 0 and r.col_idx == 0)
-    assert "⟪0⟫" in rec0.masked_text
+    assert "{0}" in rec0.masked_text
     assert b"\x02" not in rec0.masked_text.encode("utf-8", errors="replace")
 
 
@@ -467,9 +467,9 @@ def test_mock_translator_basic():
 
 def test_mock_translator_preserves_placeholders():
     mt = MockTranslator(prefix="")
-    results = mt.translate(["Hello ⟪0⟫ world ⟪1⟫!"])
-    assert "⟪0⟫" in results[0]
-    assert "⟪1⟫" in results[0]
+    results = mt.translate(["Hello {0} world {1}!"])
+    assert "{0}" in results[0]
+    assert "{1}" in results[0]
 
 
 def test_pipeline_apply_machine_translation():

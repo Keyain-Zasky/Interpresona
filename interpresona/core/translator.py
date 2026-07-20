@@ -95,7 +95,7 @@ class DeepLTranslator(BaseTranslator):
         pending_batch = []
         
         for idx, text in enumerate(texts):
-            cleaned = re.sub(r"⟪\d+⟫", "", text).strip()
+            cleaned = re.sub(r"\{\d+\}", "", text).strip()
             if not cleaned or re.match(r"^[ \t\r\n.,;:!?'\"`~@#$%^&*()_+={}\[\]|\\<>\-※\ue000-\ue0ff]*$", cleaned):
                 results[idx] = text
             else:
@@ -191,10 +191,10 @@ class LibreTranslateTranslator(BaseTranslator):
         results = []
         for i, text in enumerate(texts):
             # If the text consists purely of placeholders, spaces, and punctuation symbols,
-            # we do not need to send it to the MT engine (it would likely get corrupted or return '⟪').
+            # we do not need to send it to the MT engine.
             # We simply return the input string unmodified.
             import re
-            cleaned = re.sub(r"⟪\d+⟫", "", text).strip()
+            cleaned = re.sub(r"\{\d+\}", "", text).strip()
             # If nothing remains except punctuation/spaces, bypass translation
             if not cleaned or re.match(r"^[ \t\r\n.,;:!?'\"`~@#$%^&*()_+={}\[\]|\\<>\-※\ue000-\ue0ff]*$", cleaned):
                 results.append(text)
@@ -306,7 +306,7 @@ class MockTranslator(BaseTranslator):
             # Only transform plain text — leave placeholder tokens untouched
             # Split on ⟪...⟫ tokens and transform non-token parts
             import re
-            _TOKEN = re.compile(r"(⟪\d+⟫)")
+            _TOKEN = re.compile(r"(\{\d+\})")
             parts = _TOKEN.split(text)
             transformed = []
             for part in parts:

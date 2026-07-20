@@ -236,8 +236,8 @@ class InterpresonaApp(tk.Tk):
             ctx = ssl._create_unverified_context()
             with urllib.request.urlopen(req, context=ctx, timeout=5) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
-                latest_tag = data.get("tag_name", "v0.0.0").strip("v")
-                current_tag = __version__
+                latest_tag = data.get("tag_name", "v0.0.0").lstrip("v")
+                current_tag = __version__.lstrip("v")
                 
                 # Compare versions semantically (split dots)
                 latest_parts = [int(x) for x in latest_tag.split(".") if x.isdigit()]
