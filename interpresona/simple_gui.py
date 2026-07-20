@@ -59,6 +59,19 @@ FONT_MONO    = ("Consolas", 9)
 FONT_SMALL   = ("Segoe UI", 8)
 
 
+def enable_high_dpi_awareness():
+    """Enable High DPI awareness for crisp vector font anti-aliasing on Windows."""
+    try:
+        import ctypes
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)  # Process_Per_Monitor_DPI_Aware_V2
+    except Exception:
+        try:
+            import ctypes
+            ctypes.windll.user32.SetProcessDPIAware()
+        except Exception:
+            pass
+
+
 class FlatButton(tk.Button):
     def __init__(self, parent, text="", command=None, accent=False, danger=False, **kw):
         bg = ACCENT if accent else (ERROR_COL if danger else BG_CARD)
@@ -77,7 +90,13 @@ class InterpresonaSimpleApp(tk.Tk):
     """Simplified Step-by-Step Wizard GUI Window."""
 
     def __init__(self):
+        enable_high_dpi_awareness()
         super().__init__()
+        try:
+            self.tk.call("tk", "scaling", 1.25)
+        except Exception:
+            pass
+
         self.title("Interpresona — Guided Translation Wizard")
         self.geometry("860x640")
         self.minsize(780, 560)
@@ -483,17 +502,45 @@ class InterpresonaSimpleApp(tk.Tk):
 
     def _next_step(self):
         if self._current_step == 1:
-            # Validate input selection
+            game_path = self._game_path_var.get().strip().strip('"')
+            folder_path = self._input_folder_var.get().strip().strip('"')
+            file_path = self._input_file_var.get().strip().strip('"')
+
             st = self._source_type.get()
-            if st == "sqpack" and not self._game_path_var.get():
-                messagebox.showwarning("Attenzione", "Seleziona la cartella di gioco FFXIV prima di proseguire.")
+
+            # Auto-detect populated path if active option field is empty
+            if st == "sqpack" and not game_path:
+                if folder_path:
+                    st = "folder"
+                    self._source_type.set("folder")
+                elif file_path:
+                    st = "file"
+                    self._source_type.set("file")
+            elif st == "folder" and not folder_path:
+                if game_path:
+                    st = "sqpack"
+                    self._source_type.set("sqpack")
+                elif file_path:
+                    st = "file"
+                    self._source_type.set("file")
+            elif st == "file" and not file_path:
+                if game_path:
+                    st = "sqpack"
+                    self._source_type.set("sqpack")
+                elif folder_path:
+                    st = "folder"
+                    self._source_type.set("folder")
+
+            active_path = game_path if st == "sqpack" else (folder_path if st == "folder" else file_path)
+
+            if not active_path:
+                messagebox.showwarning("Attenzione", "Seleziona una cartella o un file valido prima di proseguire.")
                 return
-            elif st == "folder" and not self._input_folder_var.get():
-                messagebox.showwarning("Attenzione", "Seleziona la cartella contenente i file prima di proseguire.")
+
+            if not Path(active_path).exists():
+                messagebox.showerror("Errore Percorso", f"Il percorso selezionato non esiste sul tuo PC:\n\n{active_path}")
                 return
-            elif st == "file" and not self._input_file_var.get():
-                messagebox.showwarning("Attenzione", "Seleziona il file .exd prima di proseguire.")
-                return
+
             self._show_step(2)
         elif self._current_step == 2:
             b = self._backend_var.get()

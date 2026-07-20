@@ -197,7 +197,22 @@ class InterpresonaApp(tk.Tk):
     """Main application window."""
 
     def __init__(self):
+        try:
+            import ctypes
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        except Exception:
+            try:
+                import ctypes
+                ctypes.windll.user32.SetProcessDPIAware()
+            except Exception:
+                pass
+
         super().__init__()
+        try:
+            self.tk.call("tk", "scaling", 1.25)
+        except Exception:
+            pass
+
         self.title("Interpresona — FFXIV Translation Tool")
         self.geometry("1200x750")
         self.minsize(900, 600)
