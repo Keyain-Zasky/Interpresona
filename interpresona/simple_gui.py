@@ -204,19 +204,20 @@ class StringInspectorWindow(tk.Toplevel):
 
     def __init__(self, parent, records: list[dict]):
         super().__init__(parent)
-        self.title("Interpresona — Ispezione e Modifica Traduzioni ed Errori")
-        self.geometry("980x660")
-        self.minsize(820, 520)
+        self.title("Interpresona — Centro Ispezione e Traduzione Manuale Stringhe")
+        self.geometry("1020x700")
+        self.minsize(860, 540)
         self.configure(bg=BG_DARK)
 
         self._records = records
-        self._filter_type = "all"  # all, errors, ok, bypassed, manual
+        self._filter_type = "all"  # all, errors, ok, bypassed, manual, pending
+        self._selected_record = None
 
         self._build_ui()
 
     def _build_ui(self):
-        # Header
-        hdr = tk.Frame(self, bg=BG_MID, padx=16, pady=12)
+        # Top Header with Pill Badges
+        hdr = tk.Frame(self, bg=BG_MID, padx=20, pady=14)
         hdr.pack(fill="x")
 
         tk.Label(hdr, text="📊 Ispezione e Modifica Traduzioni", bg=BG_MID, fg=ACCENT_LIGHT, font=FONT_HEAD).pack(side="left")
@@ -226,37 +227,58 @@ class StringInspectorWindow(tk.Toplevel):
         oks = sum(1 for r in self._records if r["status"] == "ok")
         bypassed = sum(1 for r in self._records if r["status"] == "bypassed")
         manuals = sum(1 for r in self._records if r["status"] == "manual")
+        pendings = sum(1 for r in self._records if r["status"] == "pending")
 
-        stats_str = f"Totali: {tot}  |  ✓ Tradotte: {oks}  |  ✏️ Manuali: {manuals}  |  ⏭ Bypass: {bypassed}  |  ✖ Errori: {errs}"
-        tk.Label(hdr, text=stats_str, bg=BG_MID, fg=TEXT_PRI, font=FONT_SUB).pack(side="right")
+        badge_box = tk.Frame(hdr, bg=BG_MID)
+        badge_box.pack(side="right")
 
-        # Control Bar (Search, Filters, Edit button)
-        bar = tk.Frame(self, bg=BG_DARK, padx=16, pady=10)
+        def make_pill(parent, text, bg_col, fg_col):
+            lbl = tk.Label(parent, text=text, bg=bg_col, fg=fg_col, font=FONT_SMALL, padx=8, pady=3)
+            lbl.pack(side="left", padx=3)
+
+        make_pill(badge_box, f"Totali: {tot}", "#334155", "#f8fafc")
+        if pendings:
+            make_pill(badge_box, f"⏳ In Attesa: {pendings}", "#78350f", "#fef3c7")
+        make_pill(badge_box, f"✓ Tradotti: {oks}", "#065f46", "#a7f3d0")
+        make_pill(badge_box, f"✏️ Manuali: {manuals}", "#3730a3", "#c7d2fe")
+        make_pill(badge_box, f"⏭ Bypass: {bypassed}", "#1e40af", "#bfdbfe")
+        if errs:
+            make_pill(badge_box, f"✖ Errori: {errs}", "#9f1239", "#fecdd3")
+
+        # Control Bar (Search & Filter Pills)
+        bar = tk.Frame(self, bg=BG_DARK, padx=20, pady=10)
         bar.pack(fill="x")
 
-        tk.Label(bar, text="Cerca:", bg=BG_DARK, fg=TEXT_SEC, font=FONT_BODY).pack(side="left", padx=(0, 6))
+        tk.Label(bar, text="🔍 Cerca:", bg=BG_DARK, fg=TEXT_SEC, font=FONT_BODY).pack(side="left", padx=(0, 6))
         self._search_var = tk.StringVar()
         self._search_var.trace_add("write", lambda *args: self._populate_table())
 
         search_entry = tk.Entry(
             bar, textvariable=self._search_var, bg=BG_INPUT, fg=TEXT_PRI,
             insertbackground=TEXT_PRI, font=FONT_BODY, bd=0, relief="flat",
-            highlightthickness=1, highlightbackground=BORDER, highlightcolor=ACCENT, width=20
+            highlightthickness=1, highlightbackground=BORDER, highlightcolor=ACCENT, width=22
         )
-        search_entry.pack(side="left", padx=(0, 10))
+        search_entry.pack(side="left", padx=(0, 12))
 
-        # Filter Buttons
+        # Filter Pills
         FlatButton(bar, text=f"Tutti ({tot})", command=lambda: self._set_filter("all")).pack(side="left", padx=2)
+        if pendings:
+            FlatButton(bar, text=f"⏳ In Attesa ({pendings})", command=lambda: self._set_filter("pending")).pack(side="left", padx=2)
         FlatButton(bar, text=f"✓ Tradotti ({oks})", command=lambda: self._set_filter("ok"), accent=True).pack(side="left", padx=2)
         FlatButton(bar, text=f"✏️ Manuali ({manuals})", command=lambda: self._set_filter("manual")).pack(side="left", padx=2)
         FlatButton(bar, text=f"⏭ Bypass ({bypassed})", command=lambda: self._set_filter("bypassed")).pack(side="left", padx=2)
-        FlatButton(bar, text=f"✖ Errori ({errs})", command=lambda: self._set_filter("errors"), danger=True).pack(side="left", padx=2)
+        if errs:
+            FlatButton(bar, text=f"✖ Errori ({errs})", command=lambda: self._set_filter("errors"), danger=True).pack(side="left", padx=2)
 
-        FlatButton(bar, text="✏️ Modifica Selezionata", command=self._edit_selected_string, accent=True).pack(side="right")
+        FlatButton(bar, text="✏️ Traduci / Modifica Selezionata", command=self._edit_selected_string, accent=True).pack(side="right")
 
-        # Table Container (Treeview with Scrollbars)
-        tbl_frame = tk.Frame(self, bg=BG_DARK, padx=16, pady=4)
-        tbl_frame.pack(fill="both", expand=True)
+        # Split Container (Top Table + Bottom Interactive Inspector Panel)
+        main_split = tk.PanedWindow(self, orient="vertical", bg=BG_DARK, bd=0, sashwidth=6)
+        main_split.pack(fill="both", expand=True, padx=20, pady=(0, 14))
+
+        # Table Container
+        tbl_frame = tk.Frame(main_split, bg=BG_DARK)
+        main_split.add(tbl_frame, weight=3)
 
         cols = ("sheet", "original", "translated", "status")
         self._tree = ttk.Treeview(tbl_frame, columns=cols, show="headings", selectmode="browse")
@@ -264,12 +286,12 @@ class StringInspectorWindow(tk.Toplevel):
         self._tree.heading("sheet", text="Foglio")
         self._tree.heading("original", text="Testo Originale")
         self._tree.heading("translated", text="Testo Tradotto (Doppio-click per modificare)")
-        self._tree.heading("status", text="Stato / Errore")
+        self._tree.heading("status", text="Stato Traduzione")
 
         self._tree.column("sheet", width=120, anchor="w")
-        self._tree.column("original", width=320, anchor="w")
-        self._tree.column("translated", width=340, anchor="w")
-        self._tree.column("status", width=150, anchor="w")
+        self._tree.column("original", width=340, anchor="w")
+        self._tree.column("translated", width=360, anchor="w")
+        self._tree.column("status", width=140, anchor="w")
 
         vsb = ttk.Scrollbar(tbl_frame, orient="vertical", command=self._tree.yview)
         hsb = ttk.Scrollbar(tbl_frame, orient="horizontal", command=self._tree.xview)
@@ -281,11 +303,45 @@ class StringInspectorWindow(tk.Toplevel):
 
         self._tree.tag_configure("error", background="#451a1a", foreground="#f87171")
         self._tree.tag_configure("ok", background="#1c2032", foreground="#ffffff")
-        self._tree.tag_configure("manual", background="#1a3b2b", foreground="#4ade80")
-        self._tree.tag_configure("bypassed", background="#1a2d3e", foreground="#93c5fd")
+        self._tree.tag_configure("manual", background="#064e3b", foreground="#a7f3d0")
+        self._tree.tag_configure("bypassed", background="#1e3a8a", foreground="#93c5fd")
+        self._tree.tag_configure("pending", background="#0f172a", foreground="#94a3b8")
 
-        # Double-click to edit string
+        # Double click & selection bindings
         self._tree.bind("<Double-1>", lambda e: self._edit_selected_string())
+        self._tree.bind("<<TreeviewSelect>>", lambda e: self._on_tree_select())
+
+        # Bottom Live Interactive Preview Pane
+        prev_panel = tk.Frame(main_split, bg=BG_CARD, padx=16, pady=12, bd=1, highlightbackground=BORDER, highlightthickness=1)
+        main_split.add(prev_panel, weight=2)
+
+        p_top = tk.Frame(prev_panel, bg=BG_CARD)
+        p_top.pack(fill="x", pady=(0, 6))
+
+        tk.Label(p_top, text="🔍 Anteprima & Modifica Rapida Stringa", bg=BG_CARD, fg=ACCENT_LIGHT, font=FONT_SUB).pack(side="left")
+        self._lbl_prev_sheet = tk.Label(p_top, text="", bg=BG_CARD, fg=TEXT_SEC, font=FONT_SMALL)
+        self._lbl_prev_sheet.pack(side="right")
+
+        # Two Column Text Panes for Original & Translated
+        col_box = tk.Frame(prev_panel, bg=BG_CARD)
+        col_box.pack(fill="both", expand=True)
+
+        # Left Column (Original)
+        left_col = tk.Frame(col_box, bg=BG_CARD)
+        left_col.pack(side="left", fill="both", expand=True, padx=(0, 8))
+
+        tk.Label(left_col, text="Testo Originale (EN):", bg=BG_CARD, fg=TEXT_SEC, font=FONT_SMALL).pack(anchor="w", pady=(0, 2))
+        self._txt_orig = scrolledtext.ScrolledText(left_col, bg=BG_INPUT, fg=TEXT_PRI, font=FONT_BODY, height=4, relief="flat")
+        self._txt_orig.pack(fill="both", expand=True)
+        self._txt_orig.config(state="disabled")
+
+        # Right Column (Translated)
+        right_col = tk.Frame(col_box, bg=BG_CARD)
+        right_col.pack(side="right", fill="both", expand=True, padx=(8, 0))
+
+        tk.Label(right_col, text="Traduzione Attuale / Manuale (IT):", bg=BG_CARD, fg=TEXT_PRI, font=FONT_SMALL).pack(anchor="w", pady=(0, 2))
+        self._txt_trans = scrolledtext.ScrolledText(right_col, bg=BG_MID, fg=TEXT_PRI, font=FONT_BODY, height=4, relief="flat", insertbackground=TEXT_PRI)
+        self._txt_trans.pack(fill="both", expand=True)
 
         self._populate_table()
 
@@ -309,6 +365,8 @@ class StringInspectorWindow(tk.Toplevel):
                 continue
             if self._filter_type == "manual" and status != "manual":
                 continue
+            if self._filter_type == "pending" and status != "pending":
+                continue
 
             orig = r["original"]
             trans = r["translated"]
@@ -325,12 +383,32 @@ class StringInspectorWindow(tk.Toplevel):
                 status_txt = "⏭ Preservato (Bypass)"
             elif status == "manual":
                 status_txt = "✏️ Modificato a mano"
+            elif status == "pending":
+                status_txt = "⏳ In attesa traduzione"
             else:
                 status_txt = "✓ Tradotto"
 
             tag = status
 
             self._tree.insert("", "end", iid=str(idx), values=(sheet, orig, trans, status_txt), tags=(tag,))
+
+    def _on_tree_select(self):
+        sel = self._tree.selection()
+        if not sel:
+            return
+        idx = int(sel[0])
+        r = self._records[idx]
+        self._selected_record = r
+
+        self._lbl_prev_sheet.config(text=f"Foglio: {r.get('sheet', '')}  |  Stato: {r.get('status', '')}")
+        
+        self._txt_orig.config(state="normal")
+        self._txt_orig.delete("1.0", "end")
+        self._txt_orig.insert("1.0", r.get("original", ""))
+        self._txt_orig.config(state="disabled")
+
+        self._txt_trans.delete("1.0", "end")
+        self._txt_trans.insert("1.0", r.get("translated", ""))
 
     def _edit_selected_string(self):
         sel = self._tree.selection()
@@ -877,23 +955,62 @@ class InterpresonaSimpleApp(tk.Tk):
         try:
             if st == "sqpack":
                 game_path_str = self._game_path_var.get().strip().strip('"')
-                sheet_sel = self._selected_sqpack_sheet_var.get()
-                if not game_path_str or "(Tutti i fogli" in sheet_sel:
+                if not game_path_str:
                     return
                 game_path = Path(game_path_str)
                 if not game_path.exists():
                     return
-                reader = SqPackReader(game_path)
-                sheet_name = sheet_sel
-                exh_bytes = reader.read_file(reader.exh_path(sheet_name))
-                exd_pages = []
-                for p_def in EXHParser(exh_bytes).result.pages:
-                    for lang in ("en", "ja", "de", "fr", ""):
-                        c_path = reader.exd_path(sheet_name, page=p_def.start_row_id, lang=lang)
-                        if reader.file_exists(c_path):
-                            exd_pages.append(reader.read_file(c_path))
-                            break
-                if exd_pages:
+                reader = SqPackReader.from_game_directory(game_path)
+                sheet_sel = self._selected_sqpack_sheet_var.get().strip()
+                if sheet_sel and not sheet_sel.startswith("("):
+                    sheets = [sheet_sel]
+                else:
+                    sheets = [s for s in reader.list_exd_sheets() if s in ("Addon", "Item", "Quest", "LogMessage", "Action", "Status", "CustomTalk", "NpcYell", "BGM")]
+                    if not sheets:
+                        sheets = reader.list_exd_sheets()[:5]
+
+                for sheet_name in sheets:
+                    try:
+                        exh_bytes = reader.read_file(reader.exh_path(sheet_name))
+                        exd_pages = []
+                        for p_def in EXHParser(exh_bytes).result.pages:
+                            for lang in ("en", "ja", "de", "fr", ""):
+                                c_path = reader.exd_path(sheet_name, page=p_def.start_row_id, lang=lang)
+                                if reader.file_exists(c_path):
+                                    exd_pages.append(reader.read_file(c_path))
+                                    break
+                        if exd_pages:
+                            pipeline = TranslationPipeline(exh_bytes, exd_pages)
+                            recs = pipeline.extract()
+                            for r in recs:
+                                t_str = r.masked_text.strip()
+                                if technical_key_pat.match(t_str) or t_str.startswith("TEXT_") or t_str.startswith("KEY_"):
+                                    continue
+                                if not r.translated_text and not r.errors:
+                                    self._session_records.append({
+                                        "sheet": sheet_name,
+                                        "original": r.masked_text,
+                                        "translated": "",
+                                        "status": "pending",
+                                        "error_msg": "In attesa traduzione",
+                                        "record_obj": r
+                                    })
+                    except Exception:
+                        pass
+
+            elif st == "folder":
+                inp_dir_str = self._input_folder_var.get().strip().strip('"')
+                if not inp_dir_str:
+                    return
+                inp_dir = Path(inp_dir_str)
+                exh_files = list(inp_dir.glob("*.exh"))
+                for exh_file in exh_files:
+                    sheet_stem = exh_file.stem
+                    exd_files = sorted(inp_dir.glob(f"{sheet_stem}_*.exd"))
+                    if not exd_files:
+                        continue
+                    exh_bytes = exh_file.read_bytes()
+                    exd_pages = [f.read_bytes() for f in exd_files]
                     pipeline = TranslationPipeline(exh_bytes, exd_pages)
                     recs = pipeline.extract()
                     for r in recs:
@@ -902,13 +1019,14 @@ class InterpresonaSimpleApp(tk.Tk):
                             continue
                         if not r.translated_text and not r.errors:
                             self._session_records.append({
-                                "sheet": sheet_name,
+                                "sheet": sheet_stem,
                                 "original": r.masked_text,
                                 "translated": "",
                                 "status": "pending",
-                                "error_msg": "",
+                                "error_msg": "In attesa traduzione",
                                 "record_obj": r
                             })
+
             elif st == "file":
                 exd_path_str = self._input_file_var.get().strip().strip('"')
                 if not exd_path_str:
@@ -926,7 +1044,7 @@ class InterpresonaSimpleApp(tk.Tk):
                                 "original": r.masked_text,
                                 "translated": "",
                                 "status": "pending",
-                                "error_msg": "",
+                                "error_msg": "In attesa traduzione",
                                 "record_obj": r
                             })
         except Exception:
@@ -970,11 +1088,11 @@ class InterpresonaSimpleApp(tk.Tk):
         elif step_num == 3:
             self._card_step3.pack(fill="both", expand=True)
             self._btn_back.config(state="normal")
-            self._btn_next.config(state="normal", text="Vai all'Esecuzione ▶")
+            self._btn_next.config(state="normal", text="Vai al Passo 4 ▶")
         elif step_num == 4:
             self._card_step4.pack(fill="both", expand=True)
-            self._btn_back.config(state="normal" if not self._is_running else "disabled")
-            self._btn_next.config(state="disabled")
+            self._btn_back.config(state="normal")
+            self._btn_next.config(state="disabled", text="Avanti ▶")
 
     def _next_step(self):
         if self._current_step == 1:
