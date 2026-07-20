@@ -870,17 +870,20 @@ class InterpresonaSimpleApp(tk.Tk):
 
                 if targets:
                     self._log(f"Foglio {sheet_name}: traduzione di {len(targets)} stringhe...", "info")
-                    CHUNK = 20
+                    CHUNK = 10
                     for c_start in range(0, len(targets), CHUNK):
                         if self._is_cancelled:
                             break
                         chunk = targets[c_start: c_start + CHUNK]
                         texts = [r.masked_text for r in chunk]
-                        translated_list = translator.translate(texts)
-                        for rec, trans in zip(chunk, translated_list):
-                            ph_err = validate_placeholders(trans, rec.placeholders)
-                            if not ph_err:
-                                rec.translated_text = trans
+                        try:
+                            translated_list = translator.translate(texts)
+                            for rec, trans in zip(chunk, translated_list):
+                                ph_err = validate_placeholders(trans, rec.placeholders)
+                                if not ph_err:
+                                    rec.translated_text = trans
+                        except Exception as chunk_exc:
+                            self._log(f"Avviso blocco {c_start}/{len(targets)} su {sheet_name}: {chunk_exc}", "warning")
 
                 # Save translated EXD/EXH to out_dir
                 safe_name = sheet_name.replace("/", "_")
