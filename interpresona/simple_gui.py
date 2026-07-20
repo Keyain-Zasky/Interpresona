@@ -278,7 +278,7 @@ class StringInspectorWindow(tk.Toplevel):
 
         # Table Container
         tbl_frame = tk.Frame(main_split, bg=BG_DARK)
-        main_split.add(tbl_frame, weight=3)
+        main_split.add(tbl_frame, minsize=200, stretch="always")
 
         cols = ("sheet", "original", "translated", "status")
         self._tree = ttk.Treeview(tbl_frame, columns=cols, show="headings", selectmode="browse")
@@ -313,7 +313,7 @@ class StringInspectorWindow(tk.Toplevel):
 
         # Bottom Live Interactive Preview Pane
         prev_panel = tk.Frame(main_split, bg=BG_CARD, padx=16, pady=12, bd=1, highlightbackground=BORDER, highlightthickness=1)
-        main_split.add(prev_panel, weight=2)
+        main_split.add(prev_panel, minsize=140, stretch="always")
 
         p_top = tk.Frame(prev_panel, bg=BG_CARD)
         p_top.pack(fill="x", pady=(0, 6))
@@ -350,6 +350,9 @@ class StringInspectorWindow(tk.Toplevel):
         self._populate_table()
 
     def _populate_table(self):
+        if not hasattr(self, "_tree"):
+            return
+
         for item in self._tree.get_children():
             self._tree.delete(item)
 
