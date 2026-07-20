@@ -834,9 +834,9 @@ class InterpresonaSimpleApp(tk.Tk):
         self._btn_stop_exec.pack(side="left", padx=10)
         self._btn_stop_exec.config(state="disabled")
 
-        self._btn_inspect = FlatButton(ctl_bar, text="📊 Dettaglio Stringhe & Errori", command=self._open_string_inspector)
+        self._btn_inspect = FlatButton(ctl_bar, text="📊 Dettaglio Stringhe & Modifica Manuale", command=self._open_string_inspector)
         self._btn_inspect.pack(side="left", padx=10)
-        self._btn_inspect.config(state="disabled")
+        self._btn_inspect.config(state="normal")
 
         self._btn_open_out = FlatButton(ctl_bar, text="📁 Apri Cartella Output", command=self._open_output_folder)
         self._btn_open_out.pack(side="right")
@@ -866,7 +866,74 @@ class InterpresonaSimpleApp(tk.Tk):
             import webbrowser
             webbrowser.open(out_dir)
 
+    def _ensure_session_records_populated(self):
+        if self._session_records:
+            return
+
+        st = self._source_type.get()
+        import re
+        technical_key_pat = re.compile(r"^[A-Z][A-Z0-9_]{4,80}$")
+
+        try:
+            if st == "sqpack":
+                game_path_str = self._game_path_var.get().strip().strip('"')
+                sheet_sel = self._selected_sqpack_sheet_var.get()
+                if not game_path_str or "(Tutti i fogli" in sheet_sel:
+                    return
+                game_path = Path(game_path_str)
+                if not game_path.exists():
+                    return
+                reader = SqPackReader(game_path)
+                sheet_name = sheet_sel
+                exh_bytes = reader.read_file(reader.exh_path(sheet_name))
+                exd_pages = []
+                for p_def in EXHParser(exh_bytes).result.pages:
+                    for lang in ("en", "ja", "de", "fr", ""):
+                        c_path = reader.exd_path(sheet_name, page=p_def.start_row_id, lang=lang)
+                        if reader.file_exists(c_path):
+                            exd_pages.append(reader.read_file(c_path))
+                            break
+                if exd_pages:
+                    pipeline = TranslationPipeline(exh_bytes, exd_pages)
+                    recs = pipeline.extract()
+                    for r in recs:
+                        t_str = r.masked_text.strip()
+                        if technical_key_pat.match(t_str) or t_str.startswith("TEXT_") or t_str.startswith("KEY_"):
+                            continue
+                        if not r.translated_text and not r.errors:
+                            self._session_records.append({
+                                "sheet": sheet_name,
+                                "original": r.masked_text,
+                                "translated": "",
+                                "status": "pending",
+                                "error_msg": "",
+                                "record_obj": r
+                            })
+            elif st == "file":
+                exd_path_str = self._input_file_var.get().strip().strip('"')
+                if not exd_path_str:
+                    return
+                exd_path = Path(exd_path_str)
+                sheet_stem = exd_path.stem.rsplit("_", 1)[0] if "_" in exd_path.stem else exd_path.stem
+                exh_path = exd_path.parent / f"{sheet_stem}.exh"
+                if exd_path.exists() and exh_path.exists():
+                    pipeline = TranslationPipeline(exh_path.read_bytes(), [exd_path.read_bytes()])
+                    recs = pipeline.extract()
+                    for r in recs:
+                        if r.masked_text.strip() and not r.errors:
+                            self._session_records.append({
+                                "sheet": sheet_stem,
+                                "original": r.masked_text,
+                                "translated": "",
+                                "status": "pending",
+                                "error_msg": "",
+                                "record_obj": r
+                            })
+        except Exception:
+            pass
+
     def _open_string_inspector(self):
+        self._ensure_session_records_populated()
         StringInspectorWindow(self, self._session_records)
 
     # ------------------------------------------------------------------
@@ -1103,6 +1170,14 @@ class InterpresonaSimpleApp(tk.Tk):
                     t_str = rec.masked_text.strip()
                     if technical_key_pat.match(t_str) or t_str.startswith("TEXT_") or t_str.startswith("KEY_"):
                         continue
+
+                    manual_entry = next((s for s in self._session_records if s.get("original") == rec.masked_text and s.get("status") == "manual"), None)
+                    if manual_entry:
+                        rec.translated_text = manual_entry["translated"]
+                        manual_entry["record_obj"] = rec
+                        self.after(0, lambda r=rec.masked_text[:30], t=rec.translated_text[:30]: self._log(f"  ✏️ [Preservata Manuale] '{r}' ➔ '{t}'", "info"))
+                        continue
+
                     if not rec.translated_text and not rec.errors:
                         targets.append(rec)
 
@@ -1133,25 +1208,30 @@ class InterpresonaSimpleApp(tk.Tk):
                                 if not ph_err:
                                     rec.translated_text = trans
                                     st_code = "bypassed" if trans == rec.masked_text else "ok"
-                                    self._session_records.append({
-                                        "sheet": sheet_name,
-                                        "original": rec.masked_text,
-                                        "translated": trans,
-                                        "status": st_code,
-                                        "error_msg": "Preservato (Bypass)" if st_code == "bypassed" else "",
-                                        "record_obj": rec
-                                    })
+                                    # Update existing record if present or append
+                                    existing = next((s for s in self._session_records if s.get("original") == rec.masked_text), None)
+                                    if existing:
+                                        existing.update({"translated": trans, "status": st_code, "error_msg": "Preservato (Bypass)" if st_code == "bypassed" else "", "record_obj": rec})
+                                    else:
+                                        self._session_records.append({
+                                            "sheet": sheet_name,
+                                            "original": rec.masked_text,
+                                            "translated": trans,
+                                            "status": st_code,
+                                            "error_msg": "Preservato (Bypass)" if st_code == "bypassed" else "",
+                                            "record_obj": rec
+                                        })
                                 else:
                                     # Restore original text so binary file stays 100% valid
                                     rec.translated_text = rec.masked_text
-                                    self._session_records.append({
-                                        "sheet": sheet_name,
-                                        "original": rec.masked_text,
-                                        "translated": rec.masked_text,
-                                        "status": "error",
-                                        "error_msg": f"Ripristinato originale: MT ha rimosso segnaposto ({ph_err})",
-                                        "record_obj": rec
-                                    })
+                                    existing = next((s for s in self._session_records if s.get("original") == rec.masked_text), None)
+                                    err_info = {"translated": rec.masked_text, "status": "error", "error_msg": f"Ripristinato originale: MT ha rimosso segnaposto ({ph_err})", "record_obj": rec}
+                                    if existing:
+                                        existing.update(err_info)
+                                    else:
+                                        err_info["sheet"] = sheet_name
+                                        err_info["original"] = rec.masked_text
+                                        self._session_records.append(err_info)
                                     self.after(0, lambda r=rec.masked_text[:35]: self._log(f"  ⚠ [Segnaposto Ripristinato] '{r}' (MT ha rimosso segnaposto)", "warning"))
                         except Exception as chunk_exc:
                             self._log(f"Avviso blocco {c_start}/{tot_t} su {sheet_name}: {chunk_exc}", "warning")
@@ -1202,6 +1282,14 @@ class InterpresonaSimpleApp(tk.Tk):
                     t_str = rec.masked_text.strip()
                     if technical_key_pat.match(t_str) or t_str.startswith("TEXT_") or t_str.startswith("KEY_"):
                         continue
+
+                    manual_entry = next((s for s in self._session_records if s.get("original") == rec.masked_text and s.get("status") == "manual"), None)
+                    if manual_entry:
+                        rec.translated_text = manual_entry["translated"]
+                        manual_entry["record_obj"] = rec
+                        self.after(0, lambda r=rec.masked_text[:30], t=rec.translated_text[:30]: self._log(f"  ✏️ [Preservata Manuale] '{r}' ➔ '{t}'", "info"))
+                        continue
+
                     if not rec.translated_text and not rec.errors:
                         targets.append(rec)
 
@@ -1232,24 +1320,28 @@ class InterpresonaSimpleApp(tk.Tk):
                                 if not ph_err:
                                     rec.translated_text = trans
                                     st_code = "bypassed" if trans == rec.masked_text else "ok"
-                                    self._session_records.append({
-                                        "sheet": sheet_stem,
-                                        "original": rec.masked_text,
-                                        "translated": trans,
-                                        "status": st_code,
-                                        "error_msg": "Preservato (Bypass)" if st_code == "bypassed" else "",
-                                        "record_obj": rec
-                                    })
+                                    existing = next((s for s in self._session_records if s.get("original") == rec.masked_text), None)
+                                    if existing:
+                                        existing.update({"translated": trans, "status": st_code, "error_msg": "Preservato (Bypass)" if st_code == "bypassed" else "", "record_obj": rec})
+                                    else:
+                                        self._session_records.append({
+                                            "sheet": sheet_stem,
+                                            "original": rec.masked_text,
+                                            "translated": trans,
+                                            "status": st_code,
+                                            "error_msg": "Preservato (Bypass)" if st_code == "bypassed" else "",
+                                            "record_obj": rec
+                                        })
                                 else:
                                     rec.translated_text = rec.masked_text
-                                    self._session_records.append({
-                                        "sheet": sheet_stem,
-                                        "original": rec.masked_text,
-                                        "translated": rec.masked_text,
-                                        "status": "error",
-                                        "error_msg": f"Ripristinato originale: MT ha rimosso segnaposto ({ph_err})",
-                                        "record_obj": rec
-                                    })
+                                    existing = next((s for s in self._session_records if s.get("original") == rec.masked_text), None)
+                                    err_info = {"translated": rec.masked_text, "status": "error", "error_msg": f"Ripristinato originale: MT ha rimosso segnaposto ({ph_err})", "record_obj": rec}
+                                    if existing:
+                                        existing.update(err_info)
+                                    else:
+                                        err_info["sheet"] = sheet_stem
+                                        err_info["original"] = rec.masked_text
+                                        self._session_records.append(err_info)
                                     self.after(0, lambda r=rec.masked_text[:35]: self._log(f"  ⚠ [Segnaposto Ripristinato] '{r}' (MT ha rimosso segnaposto)", "warning"))
                         except Exception as chunk_exc:
                             self._log(f"Avviso blocco {c_start}/{tot_t} su {sheet_stem}: {chunk_exc}", "warning")
@@ -1276,9 +1368,21 @@ class InterpresonaSimpleApp(tk.Tk):
         pipeline = TranslationPipeline(exh_bytes, [exd_bytes])
         records = pipeline.extract()
 
-        targets = [r for r in records if r.masked_text.strip() and not r.translated_text and not r.errors]
+        targets = []
+        for rec in records:
+            if not rec.masked_text.strip() or rec.errors:
+                continue
+            manual_entry = next((s for s in self._session_records if s.get("original") == rec.masked_text and s.get("status") == "manual"), None)
+            if manual_entry:
+                rec.translated_text = manual_entry["translated"]
+                manual_entry["record_obj"] = rec
+                self.after(0, lambda r=rec.masked_text[:30], t=rec.translated_text[:30]: self._log(f"  ✏️ [Preservata Manuale] '{r}' ➔ '{t}'", "info"))
+                continue
+            if not rec.translated_text:
+                targets.append(rec)
+
         tot_t = len(targets)
-        self._log(f"Estratte {tot_t} stringhe traducibili.", "info")
+        self._log(f"Estratte {tot_t} stringhe traducibili con motore MT.", "info")
 
         if targets:
             CHUNK = 10
@@ -1305,24 +1409,28 @@ class InterpresonaSimpleApp(tk.Tk):
                         if not ph_err:
                             rec.translated_text = trans
                             st_code = "bypassed" if trans == rec.masked_text else "ok"
-                            self._session_records.append({
-                                "sheet": sheet_stem,
-                                "original": rec.masked_text,
-                                "translated": trans,
-                                "status": st_code,
-                                "error_msg": "Preservato (Bypass)" if st_code == "bypassed" else "",
-                                "record_obj": rec
-                            })
+                            existing = next((s for s in self._session_records if s.get("original") == rec.masked_text), None)
+                            if existing:
+                                existing.update({"translated": trans, "status": st_code, "error_msg": "Preservato (Bypass)" if st_code == "bypassed" else "", "record_obj": rec})
+                            else:
+                                self._session_records.append({
+                                    "sheet": sheet_stem,
+                                    "original": rec.masked_text,
+                                    "translated": trans,
+                                    "status": st_code,
+                                    "error_msg": "Preservato (Bypass)" if st_code == "bypassed" else "",
+                                    "record_obj": rec
+                                })
                         else:
                             rec.translated_text = rec.masked_text
-                            self._session_records.append({
-                                "sheet": sheet_stem,
-                                "original": rec.masked_text,
-                                "translated": rec.masked_text,
-                                "status": "error",
-                                "error_msg": f"Ripristinato originale: MT ha rimosso segnaposto ({ph_err})",
-                                "record_obj": rec
-                            })
+                            existing = next((s for s in self._session_records if s.get("original") == rec.masked_text), None)
+                            err_info = {"translated": rec.masked_text, "status": "error", "error_msg": f"Ripristinato originale: MT ha rimosso segnaposto ({ph_err})", "record_obj": rec}
+                            if existing:
+                                existing.update(err_info)
+                            else:
+                                err_info["sheet"] = sheet_stem
+                                err_info["original"] = rec.masked_text
+                                self._session_records.append(err_info)
                             self.after(0, lambda r=rec.masked_text[:35]: self._log(f"  ⚠ [Segnaposto Ripristinato] '{r}' (MT ha rimosso segnaposto)", "warning"))
                 except Exception as chunk_exc:
                     self._log(f"Avviso blocco {c_start}/{tot_t}: {chunk_exc}", "warning")
