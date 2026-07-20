@@ -840,20 +840,19 @@ class InterpresonaSimpleApp(tk.Tk):
             try:
                 exh_bytes = reader.read_file(exh_p)
                 schema = EXHParser(exh_bytes).result
-                n_pages = len(schema.pages) if schema.pages else 1
 
                 exd_pages = []
-                for p_idx in range(n_pages):
+                pages_to_check = schema.pages if schema.pages else [type("PageDef", (), {"start_row_id": 0})()]
+                for p_def in pages_to_check:
+                    page_id = getattr(p_def, "start_row_id", 0)
                     page_bytes = None
-                    for candidate_lang in ("_en", "_ja", "_de", "_fr", ""):
-                        c_path = SqPackReader.exd_path(sheet_name, page=p_idx, lang=candidate_lang)
+                    for candidate_lang in ("en", "ja", "de", "fr", ""):
+                        c_path = SqPackReader.exd_path(sheet_name, page=page_id, lang=candidate_lang)
                         if reader.file_exists(c_path):
                             page_bytes = reader.read_file(c_path)
                             break
                     if page_bytes is not None:
                         exd_pages.append(page_bytes)
-                    else:
-                        break
 
                 if not exd_pages:
                     continue

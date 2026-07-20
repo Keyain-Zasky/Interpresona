@@ -1372,20 +1372,23 @@ class InterpresonaApp(tk.Tk):
                 # Check page count
                 from interpresona.core.parser import EXHParser
                 schema = EXHParser(exh_bytes).result
-                n_pages = len(schema.pages) if schema.pages else 1
-
                 exd_pages: list[bytes] = []
-                for page_idx in range(n_pages):
+                pages_to_check = schema.pages if schema.pages else [type("PageDef", (), {"start_row_id": 0})()]
+                langs_to_try = [lang.strip().lstrip("_")] if lang else []
+                for fallback in ("en", "ja", "de", "fr", ""):
+                    if fallback not in langs_to_try:
+                        langs_to_try.append(fallback)
+
+                for p_def in pages_to_check:
+                    page_id = getattr(p_def, "start_row_id", 0)
                     page_bytes = None
-                    for candidate_lang in (lang, ""):
-                        candidate = SqPackReader.exd_path(sheet_name, page=page_idx, lang=candidate_lang)
+                    for candidate_lang in langs_to_try:
+                        candidate = SqPackReader.exd_path(sheet_name, page=page_id, lang=candidate_lang)
                         if reader.file_exists(candidate):
                             page_bytes = reader.read_file(candidate)
                             break
                     if page_bytes is not None:
                         exd_pages.append(page_bytes)
-                    else:
-                        break
 
                 if not exd_pages:
                     self._log_msg(f"  No EXD page 0 files found for language {lang}", "warning")
@@ -1625,18 +1628,22 @@ class InterpresonaApp(tk.Tk):
         from interpresona.core.parser import EXHParser
         try:
             schema = EXHParser(exh_bytes).result
-            n_pages = len(schema.pages) if schema.pages else 1
         except Exception:
-            n_pages = 1
-
-        self._log_msg(f"Sheet has {n_pages} page(s) defined in EXH", "info")
+            schema = None
 
         # ── 3. Load each page ──────────────────────────────────────────────
         exd_pages: list[bytes] = []
-        for page_idx in range(n_pages):
+        pages_to_check = schema.pages if schema and schema.pages else [type("PageDef", (), {"start_row_id": 0})()]
+        langs_to_try = [lang.strip().lstrip("_")] if lang else []
+        for fallback in ("en", "ja", "de", "fr", ""):
+            if fallback not in langs_to_try:
+                langs_to_try.append(fallback)
+
+        for p_def in pages_to_check:
+            page_id = getattr(p_def, "start_row_id", 0)
             page_bytes = None
-            for candidate_lang in (lang, ""):
-                candidate = SqPackReader.exd_path(sheet_name, page=page_idx, lang=candidate_lang)
+            for candidate_lang in langs_to_try:
+                candidate = SqPackReader.exd_path(sheet_name, page=page_id, lang=candidate_lang)
                 if self._sqpack_reader.file_exists(candidate):
                     try:
                         page_bytes = self._sqpack_reader.read_file(candidate)
