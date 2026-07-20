@@ -118,6 +118,117 @@ class FlatButton(tk.Button):
             self.config(bg=self._normal_bg)
 
 
+class StringInspectorWindow(tk.Toplevel):
+    """Pop-up Inspector window to browse all translated strings and errors."""
+
+    def __init__(self, parent, records: list[dict]):
+        super().__init__(parent)
+        self.title("Interpresona — Ispezione Traduzioni ed Errori")
+        self.geometry("950x650")
+        self.minsize(800, 500)
+        self.configure(bg=BG_DARK)
+
+        self._records = records
+        self._filter_type = "all"  # all, errors, ok
+
+        self._build_ui()
+
+    def _build_ui(self):
+        # Header
+        hdr = tk.Frame(self, bg=BG_MID, padx=16, pady=12)
+        hdr.pack(fill="x")
+
+        tk.Label(hdr, text="📊 Ispezione Traduzioni ed Errori", bg=BG_MID, fg=ACCENT_LIGHT, font=FONT_HEAD).pack(side="left")
+
+        tot = len(self._records)
+        errs = sum(1 for r in self._records if r["status"] == "error")
+        oks = sum(1 for r in self._records if r["status"] == "ok")
+
+        stats_str = f"Totali: {tot}  |  ✓ Tradotte: {oks}  |  ✖ Errori: {errs}"
+        tk.Label(hdr, text=stats_str, bg=BG_MID, fg=TEXT_PRI, font=FONT_SUB).pack(side="right")
+
+        # Control Bar (Search & Filters)
+        bar = tk.Frame(self, bg=BG_DARK, padx=16, pady=10)
+        bar.pack(fill="x")
+
+        tk.Label(bar, text="Cerca:", bg=BG_DARK, fg=TEXT_SEC, font=FONT_BODY).pack(side="left", padx=(0, 6))
+        self._search_var = tk.StringVar()
+        self._search_var.trace_add("write", lambda *args: self._populate_table())
+
+        search_entry = tk.Entry(
+            bar, textvariable=self._search_var, bg=BG_INPUT, fg=TEXT_PRI,
+            insertbackground=TEXT_PRI, font=FONT_BODY, bd=0, relief="flat",
+            highlightthickness=1, highlightbackground=BORDER, highlightcolor=ACCENT, width=30
+        )
+        search_entry.pack(side="left", padx=(0, 16))
+
+        # Filter Buttons
+        FlatButton(bar, text=f"Tutti ({tot})", command=lambda: self._set_filter("all")).pack(side="left", padx=2)
+        FlatButton(bar, text=f"✖ Solo Errori ({errs})", command=lambda: self._set_filter("errors"), danger=True).pack(side="left", padx=2)
+        FlatButton(bar, text=f"✓ Tradotti ({oks})", command=lambda: self._set_filter("ok"), accent=True).pack(side="left", padx=2)
+
+        # Table Container (Treeview with Scrollbars)
+        tbl_frame = tk.Frame(self, bg=BG_DARK, padx=16, pady=4)
+        tbl_frame.pack(fill="both", expand=True)
+
+        cols = ("sheet", "original", "translated", "status")
+        self._tree = ttk.Treeview(tbl_frame, columns=cols, show="headings", selectmode="browse")
+
+        self._tree.heading("sheet", text="Foglio")
+        self._tree.heading("original", text="Testo Originale")
+        self._tree.heading("translated", text="Testo Tradotto")
+        self._tree.heading("status", text="Stato / Errore")
+
+        self._tree.column("sheet", width=120, anchor="w")
+        self._tree.column("original", width=330, anchor="w")
+        self._tree.column("translated", width=330, anchor="w")
+        self._tree.column("status", width=150, anchor="w")
+
+        vsb = ttk.Scrollbar(tbl_frame, orient="vertical", command=self._tree.yview)
+        hsb = ttk.Scrollbar(tbl_frame, orient="horizontal", command=self._tree.xview)
+        self._tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+
+        vsb.pack(side="right", fill="y")
+        hsb.pack(side="bottom", fill="x")
+        self._tree.pack(fill="both", expand=True)
+
+        self._tree.tag_configure("error", background="#451a1a", foreground="#f87171")
+        self._tree.tag_configure("ok", background="#1c2032", foreground="#ffffff")
+
+        self._populate_table()
+
+    def _set_filter(self, f_type: str):
+        self._filter_type = f_type
+        self._populate_table()
+
+    def _populate_table(self):
+        for item in self._tree.get_children():
+            self._tree.delete(item)
+
+        q = self._search_var.get().lower().strip()
+
+        for r in self._records:
+            status = r["status"]
+            if self._filter_type == "errors" and status != "error":
+                continue
+            if self._filter_type == "ok" and status != "ok":
+                continue
+
+            orig = r["original"]
+            trans = r["translated"]
+            sheet = r["sheet"]
+            err_msg = r.get("error_msg", "")
+
+            if q:
+                if q not in orig.lower() and q not in trans.lower() and q not in sheet.lower() and q not in err_msg.lower():
+                    continue
+
+            status_txt = f"✖ {err_msg}" if status == "error" else "✓ Tradotto"
+            tag = "error" if status == "error" else "ok"
+
+            self._tree.insert("", "end", values=(sheet, orig, trans, status_txt), tags=(tag,))
+
+
 class InterpresonaSimpleApp(tk.Tk):
     """Simplified Step-by-Step Wizard GUI Window."""
 
@@ -141,6 +252,9 @@ class InterpresonaSimpleApp(tk.Tk):
         self._selected_sqpack_sheet_var = tk.StringVar(value="(Tutti i fogli - Batch Completo)")
         self._input_folder_var = tk.StringVar()
         self._input_file_var = tk.StringVar()
+
+        # Session String Records for Inspector
+        self._session_records: list[dict] = []
 
         # Translator config
         self._backend_var = tk.StringVar(value="libretranslate")
@@ -605,6 +719,10 @@ class InterpresonaSimpleApp(tk.Tk):
         self._btn_stop_exec.pack(side="left", padx=10)
         self._btn_stop_exec.config(state="disabled")
 
+        self._btn_inspect = FlatButton(ctl_bar, text="📊 Dettaglio Stringhe & Errori", command=self._open_string_inspector)
+        self._btn_inspect.pack(side="left", padx=10)
+        self._btn_inspect.config(state="disabled")
+
         self._btn_open_out = FlatButton(ctl_bar, text="📁 Apri Cartella Output", command=self._open_output_folder)
         self._btn_open_out.pack(side="right")
         self._btn_open_out.config(state="disabled")
@@ -632,6 +750,9 @@ class InterpresonaSimpleApp(tk.Tk):
         if os.path.exists(out_dir):
             import webbrowser
             webbrowser.open(out_dir)
+
+    def _open_string_inspector(self):
+        StringInspectorWindow(self, self._session_records)
 
     # ------------------------------------------------------------------
     # Step Navigation Logic
@@ -757,8 +878,10 @@ class InterpresonaSimpleApp(tk.Tk):
 
         self._is_running = True
         self._is_cancelled = False
+        self._session_records.clear()
         self._btn_start_exec.config(state="disabled")
         self._btn_stop_exec.config(state="normal")
+        self._btn_inspect.config(state="normal")
         self._btn_open_out.config(state="disabled")
         self._btn_back.config(state="disabled")
         self._progress_bar["value"] = 0
@@ -892,8 +1015,20 @@ class InterpresonaSimpleApp(tk.Tk):
                             translated_list = translator.translate(texts)
                             for rec, trans in zip(chunk, translated_list):
                                 ph_err = validate_placeholders(trans, rec.placeholders)
+                                status_code = "ok" if not ph_err else "error"
                                 if not ph_err:
                                     rec.translated_text = trans
+
+                                self._session_records.append({
+                                    "sheet": sheet_name,
+                                    "original": rec.masked_text,
+                                    "translated": trans,
+                                    "status": status_code,
+                                    "error_msg": ph_err or ""
+                                })
+
+                                if ph_err:
+                                    self.after(0, lambda r=rec.masked_text[:30], t=trans[:30], e=ph_err: self._log(f"  ✖ [ERRORE SEGNAPOSTO] '{r}' ➔ '{t}': {e}", "error"))
                         except Exception as chunk_exc:
                             self._log(f"Avviso blocco {c_start}/{tot_t} su {sheet_name}: {chunk_exc}", "warning")
 
@@ -970,8 +1105,20 @@ class InterpresonaSimpleApp(tk.Tk):
                             translated_list = translator.translate(texts)
                             for rec, trans in zip(chunk, translated_list):
                                 ph_err = validate_placeholders(trans, rec.placeholders)
+                                status_code = "ok" if not ph_err else "error"
                                 if not ph_err:
                                     rec.translated_text = trans
+
+                                self._session_records.append({
+                                    "sheet": sheet_stem,
+                                    "original": rec.masked_text,
+                                    "translated": trans,
+                                    "status": status_code,
+                                    "error_msg": ph_err or ""
+                                })
+
+                                if ph_err:
+                                    self.after(0, lambda r=rec.masked_text[:30], t=trans[:30], e=ph_err: self._log(f"  ✖ [ERRORE SEGNAPOSTO] '{r}' ➔ '{t}': {e}", "error"))
                         except Exception as chunk_exc:
                             self._log(f"Avviso blocco {c_start}/{tot_t} su {sheet_stem}: {chunk_exc}", "warning")
 
@@ -1023,8 +1170,20 @@ class InterpresonaSimpleApp(tk.Tk):
                     translated_list = translator.translate(texts)
                     for rec, trans in zip(chunk, translated_list):
                         ph_err = validate_placeholders(trans, rec.placeholders)
+                        status_code = "ok" if not ph_err else "error"
                         if not ph_err:
                             rec.translated_text = trans
+
+                        self._session_records.append({
+                            "sheet": sheet_stem,
+                            "original": rec.masked_text,
+                            "translated": trans,
+                            "status": status_code,
+                            "error_msg": ph_err or ""
+                        })
+
+                        if ph_err:
+                            self.after(0, lambda r=rec.masked_text[:30], t=trans[:30], e=ph_err: self._log(f"  ✖ [ERRORE SEGNAPOSTO] '{r}' ➔ '{t}': {e}", "error"))
                 except Exception as chunk_exc:
                     self._log(f"Avviso blocco {c_start}/{tot_t}: {chunk_exc}", "warning")
 
