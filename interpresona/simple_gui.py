@@ -36,27 +36,29 @@ from interpresona.core.translator import (
 )
 
 # ---------------------------------------------------------------------------
-# Styling palette
+# Styling palette (High-contrast, sleek modern dark theme)
 # ---------------------------------------------------------------------------
-BG_DARK      = "#0f111a"
-BG_MID       = "#161929"
-BG_CARD      = "#1c2033"
-BG_HOVER     = "#232740"
-ACCENT       = "#7b5ea7"
-ACCENT_LIGHT = "#a17dcc"
-SUCCESS      = "#4caf7d"
-WARNING      = "#e8a838"
-ERROR_COL    = "#e05252"
-TEXT_PRI     = "#e8eaf0"
-TEXT_SEC     = "#8a8fa8"
-TEXT_DIM     = "#525672"
-BORDER       = "#2a2f4a"
+BG_DARK       = "#0b0d14"
+BG_MID        = "#121522"
+BG_CARD       = "#181b2a"
+BG_SELECT     = "#1f2438"
+BG_HOVER      = "#262b40"
+ACCENT        = "#7c3aed"
+ACCENT_LIGHT  = "#a78bfa"
+SUCCESS       = "#10b981"
+WARNING       = "#f59e0b"
+ERROR_COL     = "#ef4444"
+TEXT_PRI      = "#f8fafc"
+TEXT_SEC      = "#94a3b8"
+TEXT_DIM      = "#64748b"
+BORDER        = "#282c44"
+BORDER_SELECT = "#7c3aed"
 
-FONT_HEAD    = ("Segoe UI", 14, "bold")
-FONT_SUB     = ("Segoe UI", 10, "bold")
-FONT_BODY    = ("Segoe UI", 9)
-FONT_MONO    = ("Consolas", 9)
-FONT_SMALL   = ("Segoe UI", 8)
+FONT_HEAD     = ("Segoe UI", 14, "bold")
+FONT_SUB      = ("Segoe UI", 10, "bold")
+FONT_BODY     = ("Segoe UI", 9)
+FONT_MONO     = ("Consolas", 9)
+FONT_SMALL    = ("Segoe UI", 8)
 
 
 def enable_high_dpi_awareness():
@@ -215,7 +217,7 @@ class InterpresonaSimpleApp(tk.Tk):
         self._btn_next.pack(side="right")
 
     # ------------------------------------------------------------------
-    # Step 1: Input Source Card
+    # Step 1: Input Source Card (Custom Anti-Aliased Radio Cards)
     # ------------------------------------------------------------------
     def _build_step1_card(self) -> tk.Frame:
         card = tk.Frame(self._card_container, bg=BG_CARD, padx=20, pady=20, bd=1, highlightbackground=BORDER, highlightthickness=1)
@@ -223,69 +225,119 @@ class InterpresonaSimpleApp(tk.Tk):
         tk.Label(card, text="Passo 1: Scegli l'origine dei dati da tradurre", bg=BG_CARD, fg=ACCENT_LIGHT, font=FONT_HEAD).pack(anchor="w", pady=(0, 4))
         tk.Label(card, text="Seleziona la modalità di caricamento dei file di gioco o estratti:", bg=BG_CARD, fg=TEXT_SEC, font=FONT_BODY).pack(anchor="w", pady=(0, 16))
 
-        # Option A: SQPACK Game Folder
-        opt_sq = tk.Frame(card, bg=BG_MID, padx=14, pady=12, bd=1, highlightbackground=BORDER, highlightthickness=1)
-        opt_sq.pack(fill="x", pady=6)
+        self._opt_cards = {}
 
-        rb_sq = tk.Radiobutton(opt_sq, text="🎮 Cartella di Gioco FFXIV (SqPack completo)", variable=self._source_type, value="sqpack",
-                               bg=BG_MID, fg=TEXT_PRI, selectcolor=BG_CARD, activebackground=BG_MID, font=FONT_SUB, command=self._update_step1_inputs)
-        rb_sq.pack(anchor="w")
-        tk.Label(opt_sq, text="Traduce direttamente i file .exd leggendo gli archivi di gioco (consigliato per traduzioni massive)", bg=BG_MID, fg=TEXT_DIM, font=FONT_SMALL).pack(anchor="w", padx=24, pady=(2, 8))
+        # Option A: SQPACK Game Folder Card
+        self._opt_cards["sqpack"] = self._create_option_card(
+            card, key="sqpack",
+            title="🎮 Cartella di Gioco FFXIV (SqPack completo)",
+            subtitle="Traduce direttamente i file .exd leggendo gli archivi di gioco (consigliato per traduzioni massive)",
+            var=self._game_path_var,
+            browse_cmd=self._browse_game_dir
+        )
 
-        sq_entry_frame = tk.Frame(opt_sq, bg=BG_MID)
-        sq_entry_frame.pack(fill="x", padx=24)
-        tk.Entry(sq_entry_frame, textvariable=self._game_path_var, bg=BG_CARD, fg=TEXT_PRI, font=FONT_BODY, bd=1, relief="solid").pack(side="left", fill="x", expand=True, padx=(0, 8))
-        FlatButton(sq_entry_frame, text="Sfoglia...", command=self._browse_game_dir).pack(side="right")
+        # Option B: Folder with EXH/EXD Files Card
+        self._opt_cards["folder"] = self._create_option_card(
+            card, key="folder",
+            title="📂 Cartella di File Estratti (.exh / .exd)",
+            subtitle="Traduce tutti i file .exd estratti presenti all'interno di una cartella locale sul tuo PC",
+            var=self._input_folder_var,
+            browse_cmd=self._browse_input_folder
+        )
 
-        # Option B: Folder with EXH/EXD Files
-        opt_folder = tk.Frame(card, bg=BG_MID, padx=14, pady=12, bd=1, highlightbackground=BORDER, highlightthickness=1)
-        opt_folder.pack(fill="x", pady=6)
+        # Option C: Single File Pair Card
+        self._opt_cards["file"] = self._create_option_card(
+            card, key="file",
+            title="📄 Singolo File EXD",
+            subtitle="Carica e traduce un singolo file .exd estratto accompagnato dal rispettivo .exh",
+            var=self._input_file_var,
+            browse_cmd=self._browse_input_file
+        )
 
-        rb_folder = tk.Radiobutton(opt_folder, text="📂 Cartella di File Estratti (.exh / .exd)", variable=self._source_type, value="folder",
-                                   bg=BG_MID, fg=TEXT_PRI, selectcolor=BG_CARD, activebackground=BG_MID, font=FONT_SUB, command=self._update_step1_inputs)
-        rb_folder.pack(anchor="w")
-        tk.Label(opt_folder, text="Traduce tutti i file .exd estratti presenti all'interno di una cartella locale sul tuo PC", bg=BG_MID, fg=TEXT_DIM, font=FONT_SMALL).pack(anchor="w", padx=24, pady=(2, 8))
-
-        f_entry_frame = tk.Frame(opt_folder, bg=BG_MID)
-        f_entry_frame.pack(fill="x", padx=24)
-        tk.Entry(f_entry_frame, textvariable=self._input_folder_var, bg=BG_CARD, fg=TEXT_PRI, font=FONT_BODY, bd=1, relief="solid").pack(side="left", fill="x", expand=True, padx=(0, 8))
-        FlatButton(f_entry_frame, text="Sfoglia...", command=self._browse_input_folder).pack(side="right")
-
-        # Option C: Single File Pair
-        opt_file = tk.Frame(card, bg=BG_MID, padx=14, pady=12, bd=1, highlightbackground=BORDER, highlightthickness=1)
-        opt_file.pack(fill="x", pady=6)
-
-        rb_file = tk.Radiobutton(opt_file, text="📄 Singolo File EXD", variable=self._source_type, value="file",
-                                 bg=BG_MID, fg=TEXT_PRI, selectcolor=BG_CARD, activebackground=BG_MID, font=FONT_SUB, command=self._update_step1_inputs)
-        rb_file.pack(anchor="w")
-
-        file_entry_frame = tk.Frame(opt_file, bg=BG_MID)
-        file_entry_frame.pack(fill="x", padx=24, pady=(6, 0))
-        tk.Entry(file_entry_frame, textvariable=self._input_file_var, bg=BG_CARD, fg=TEXT_PRI, font=FONT_BODY, bd=1, relief="solid").pack(side="left", fill="x", expand=True, padx=(0, 8))
-        FlatButton(file_entry_frame, text="Sfoglia...", command=self._browse_input_file).pack(side="right")
-
+        self._update_step1_inputs()
         return card
 
+    def _create_option_card(self, parent, key: str, title: str, subtitle: str, var: tk.StringVar, browse_cmd) -> dict:
+        frame = tk.Frame(parent, bg=BG_MID, padx=14, pady=12, bd=1, highlightbackground=BORDER, highlightthickness=1, cursor="hand2")
+        frame.pack(fill="x", pady=6)
+
+        hdr_line = tk.Frame(frame, bg=BG_MID, cursor="hand2")
+        hdr_line.pack(fill="x")
+
+        # Custom vector radio dot indicator
+        dot_lbl = tk.Label(hdr_line, text="●", bg=BG_MID, fg=ACCENT_LIGHT, font=("Segoe UI", 12))
+        dot_lbl.pack(side="left", padx=(0, 8))
+
+        title_lbl = tk.Label(hdr_line, text=title, bg=BG_MID, fg=TEXT_PRI, font=FONT_SUB, cursor="hand2")
+        title_lbl.pack(side="left")
+
+        sub_lbl = tk.Label(frame, text=subtitle, bg=BG_MID, fg=TEXT_DIM, font=FONT_SMALL, cursor="hand2")
+        sub_lbl.pack(anchor="w", padx=24, pady=(2, 8))
+
+        entry_frame = tk.Frame(frame, bg=BG_MID)
+        entry_frame.pack(fill="x", padx=24)
+
+        entry = tk.Entry(entry_frame, textvariable=var, bg=BG_CARD, fg=TEXT_PRI, font=FONT_BODY, bd=1, relief="solid")
+        entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
+
+        btn = FlatButton(entry_frame, text="Sfoglia...", command=browse_cmd)
+        btn.pack(side="right")
+
+        card_info = {
+            "frame": frame,
+            "dot": dot_lbl,
+            "title": title_lbl,
+            "sub": sub_lbl,
+            "entry_frame": entry_frame,
+            "hdr_line": hdr_line,
+        }
+
+        # Bind click events on all non-entry card elements
+        def on_click(e=None):
+            self._source_type.set(key)
+            self._update_step1_inputs()
+
+        for w in (frame, hdr_line, title_lbl, sub_lbl, dot_lbl):
+            w.bind("<Button-1>", on_click)
+
+        return card_info
+
     def _update_step1_inputs(self):
-        st = self._source_type.get()
+        active_key = self._source_type.get()
+        for key, card in self._opt_cards.items():
+            is_active = (key == active_key)
+            bg_col = BG_SELECT if is_active else BG_MID
+            border_col = BORDER_SELECT if is_active else BORDER
+            dot_col = ACCENT_LIGHT if is_active else TEXT_DIM
+            dot_txt = "●" if is_active else "○"
+
+            card["frame"].config(bg=bg_col, highlightbackground=border_col, highlightthickness=2 if is_active else 1)
+            card["hdr_line"].config(bg=bg_col)
+            card["entry_frame"].config(bg=bg_col)
+            card["title"].config(bg=bg_col)
+            card["sub"].config(bg=bg_col)
+            card["dot"].config(bg=bg_col, fg=dot_col, text=dot_txt)
 
     def _browse_game_dir(self):
         path = filedialog.askdirectory(title="Seleziona cartella di gioco FFXIV (o sqpack)")
         if path:
             self._game_path_var.set(path)
             self._source_type.set("sqpack")
+            self._update_step1_inputs()
 
     def _browse_input_folder(self):
         path = filedialog.askdirectory(title="Seleziona cartella contenente i file .exh/.exd")
         if path:
             self._input_folder_var.set(path)
             self._source_type.set("folder")
+            self._update_step1_inputs()
 
     def _browse_input_file(self):
         path = filedialog.askopenfilename(title="Seleziona file .exd", filetypes=[("FFXIV EXD Data", "*.exd"), ("Tutti i file", "*.*")])
         if path:
             self._input_file_var.set(path)
             self._source_type.set("file")
+            self._update_step1_inputs()
 
     # ------------------------------------------------------------------
     # Step 2: Translation Service Setup Card
