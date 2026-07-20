@@ -119,6 +119,51 @@ class FlatButton(tk.Button):
             self.config(bg=self._normal_bg)
 
 
+class DarkScrolledText(tk.Frame):
+    """Custom ScrolledText wrapper with modern dark flat ttk.Scrollbar and soft contours."""
+
+    def __init__(self, parent, height=4, width=None, bg=BG_INPUT, fg=TEXT_PRI, font=FONT_BODY, **kwargs):
+        super().__init__(parent, bg=bg, bd=1, highlightbackground=BORDER, highlightthickness=1)
+        
+        self.text = tk.Text(
+            self,
+            height=height,
+            width=width,
+            bg=bg,
+            fg=fg,
+            insertbackground=TEXT_PRI,
+            font=font,
+            relief="flat",
+            bd=0,
+            wrap="word",
+            padx=8,
+            pady=6
+        )
+        self.vsb = ttk.Scrollbar(self, orient="vertical", command=self.text.yview)
+        self.text.configure(yscrollcommand=self.vsb.set)
+        
+        self.vsb.pack(side="right", fill="y")
+        self.text.pack(side="left", fill="both", expand=True)
+
+    def insert(self, index, chars, *args):
+        self.text.insert(index, chars, *args)
+
+    def delete(self, index1, index2=None):
+        self.text.delete(index1, index2)
+
+    def get(self, index1, index2=None):
+        return self.text.get(index1, index2)
+
+    def config(self, cnf=None, **kw):
+        if "state" in kw:
+            self.text.config(state=kw["state"])
+        else:
+            self.text.config(cnf, **kw)
+
+    def see(self, index):
+        self.text.see(index)
+
+
 class SheetSearchDialog(tk.Toplevel):
     """Dialog to search and select a specific FFXIV EXD sheet."""
 
@@ -255,7 +300,7 @@ class EditStringDialog(tk.Toplevel):
 
         # Original Text Reference
         tk.Label(pad, text="Testo Originale (Riferimento):", bg=BG_DARK, fg=TEXT_SEC, font=FONT_SUB).pack(anchor="w", pady=(0, 4))
-        orig_text = scrolledtext.ScrolledText(pad, bg=BG_INPUT, fg=TEXT_PRI, font=FONT_BODY, height=4, relief="flat")
+        orig_text = DarkScrolledText(pad, bg=BG_INPUT, fg=TEXT_PRI, font=FONT_BODY, height=4)
         orig_text.insert("1.0", self._record.get("original", ""))
         orig_text.config(state="disabled")
         orig_text.pack(fill="x", pady=(0, 12))
@@ -270,7 +315,7 @@ class EditStringDialog(tk.Toplevel):
 
         # Manual Translation Input Area
         tk.Label(pad, text="Nuova Traduzione Manuale:", bg=BG_DARK, fg=TEXT_PRI, font=FONT_SUB).pack(anchor="w", pady=(0, 4))
-        self._edit_text = scrolledtext.ScrolledText(pad, bg=BG_MID, fg=TEXT_PRI, font=FONT_BODY, height=5, relief="flat", insertbackground=TEXT_PRI)
+        self._edit_text = DarkScrolledText(pad, bg=BG_MID, fg=TEXT_PRI, font=FONT_BODY, height=5)
         self._edit_text.insert("1.0", self._record.get("translated", ""))
         self._edit_text.pack(fill="both", expand=True, pady=(0, 12))
 
@@ -443,7 +488,7 @@ class StringInspectorWindow(tk.Toplevel):
         left_col.pack(side="left", fill="both", expand=True, padx=(0, 8))
 
         tk.Label(left_col, text="Testo Originale (EN):", bg=BG_CARD, fg=TEXT_SEC, font=FONT_SMALL).pack(anchor="w", pady=(0, 2))
-        self._txt_orig = scrolledtext.ScrolledText(left_col, bg=BG_INPUT, fg=TEXT_PRI, font=FONT_BODY, height=4, relief="flat")
+        self._txt_orig = DarkScrolledText(left_col, bg=BG_INPUT, fg=TEXT_PRI, font=FONT_BODY, height=4)
         self._txt_orig.pack(fill="both", expand=True)
         self._txt_orig.config(state="disabled")
 
@@ -452,7 +497,7 @@ class StringInspectorWindow(tk.Toplevel):
         right_col.pack(side="right", fill="both", expand=True, padx=(8, 0))
 
         tk.Label(right_col, text="Traduzione Attuale / Manuale (IT):", bg=BG_CARD, fg=TEXT_PRI, font=FONT_SMALL).pack(anchor="w", pady=(0, 2))
-        self._txt_trans = scrolledtext.ScrolledText(right_col, bg=BG_MID, fg=TEXT_PRI, font=FONT_BODY, height=4, relief="flat", insertbackground=TEXT_PRI)
+        self._txt_trans = DarkScrolledText(right_col, bg=BG_MID, fg=TEXT_PRI, font=FONT_BODY, height=4)
         self._txt_trans.pack(fill="both", expand=True)
 
         self._populate_table()
