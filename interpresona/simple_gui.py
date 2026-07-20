@@ -189,12 +189,15 @@ class InterpresonaSimpleApp(tk.Tk):
                     return
 
     def _populate_sqpack_sheets_async(self):
-        def worker():
-            path_str = self._game_path_var.get().strip().strip('"')
-            if not path_str or not Path(path_str).exists():
+        path_str = self._game_path_var.get().strip().strip('"')
+        if not path_str:
+            return
+
+        def worker(target_path: str):
+            if not Path(target_path).exists():
                 return
             try:
-                reader = SqPackReader.from_game_directory(Path(path_str))
+                reader = SqPackReader.from_game_directory(Path(target_path))
                 sheets = reader.list_exd_sheets()
                 if sheets:
                     items = ["(Tutti i fogli - Batch Completo)"] + sorted(sheets)
@@ -202,7 +205,7 @@ class InterpresonaSimpleApp(tk.Tk):
             except Exception:
                 pass
 
-        threading.Thread(target=worker, daemon=True).start()
+        threading.Thread(target=worker, args=(path_str,), daemon=True).start()
 
     def _setup_styles(self):
         style = ttk.Style(self)
@@ -525,13 +528,18 @@ class InterpresonaSimpleApp(tk.Tk):
         self._test_result_lbl.config(text="Verifica in corso...", fg=WARNING)
         self.update()
 
-        def do_test():
+        b = self._backend_var.get()
+        url = self._libre_url_var.get()
+        key = self._deepl_key_var.get()
+        src = self._source_lang_var.get()
+        tgt = self._target_lang_var.get()
+
+        def do_test(b_val, url_val, key_val, src_val, tgt_val):
             try:
-                b = self._backend_var.get()
-                if b == "libretranslate":
-                    t = LibreTranslateTranslator(url=self._libre_url_var.get(), source_lang=self._source_lang_var.get(), target_lang=self._target_lang_var.get())
-                elif b == "deepl":
-                    t = DeepLTranslator(api_key=self._deepl_key_var.get(), source_lang=self._source_lang_var.get(), target_lang=self._target_lang_var.get())
+                if b_val == "libretranslate":
+                    t = LibreTranslateTranslator(url=url_val, source_lang=src_val, target_lang=tgt_val)
+                elif b_val == "deepl":
+                    t = DeepLTranslator(api_key=key_val, source_lang=src_val, target_lang=tgt_val)
                 else:
                     t = MockTranslator()
 
@@ -544,7 +552,7 @@ class InterpresonaSimpleApp(tk.Tk):
                 err_msg = str(exc)[:60]
                 self.after(0, lambda: self._test_result_lbl.config(text=f"✖ Errore: {err_msg}", fg=ERROR_COL))
 
-        threading.Thread(target=do_test, daemon=True).start()
+        threading.Thread(target=do_test, args=(b, url, key, src, tgt), daemon=True).start()
 
     # ------------------------------------------------------------------
     # Step 3: Destination Card
