@@ -113,15 +113,20 @@ def apply_dark_popup_style(window):
         rowheight=28,
         font=FONT_BODY,
         borderwidth=0,
-        relief="flat"
+        relief="flat",
+        darkcolor=BG_MID,
+        lightcolor=BG_MID,
+        bordercolor=BG_MID
     )
     style.configure("Treeview.Heading",
         background=BG_CARD,
         foreground=ACCENT_LIGHT,
         font=FONT_HEAD,
         relief="flat",
-        borderwidth=1,
-        bordercolor=BORDER
+        borderwidth=0,
+        bordercolor=BG_CARD,
+        darkcolor=BG_CARD,
+        lightcolor=BG_CARD
     )
     style.map("Treeview",
         background=[("selected", ACCENT)],
@@ -132,6 +137,8 @@ def apply_dark_popup_style(window):
         troughcolor=BG_DARK,
         background=BORDER,
         bordercolor=BG_DARK,
+        darkcolor=BG_DARK,
+        lightcolor=BG_DARK,
         arrowcolor=ACCENT_LIGHT,
         relief="flat",
         width=14
