@@ -156,9 +156,9 @@ class InterpresonaSimpleApp(tk.Tk):
         self._is_cancelled = False
         self._is_running = False
 
-        self._auto_detect_game_folder()
         self._setup_styles()
         self._build_ui()
+        self._auto_detect_game_folder()
         self._show_step(1)
 
         # Run background update check
@@ -190,7 +190,7 @@ class InterpresonaSimpleApp(tk.Tk):
 
     def _populate_sqpack_sheets_async(self):
         path_str = self._game_path_var.get().strip().strip('"')
-        if not path_str:
+        if not path_str or not hasattr(self, "_sqpack_sheet_cmb"):
             return
 
         def worker(target_path: str):
@@ -287,12 +287,6 @@ class InterpresonaSimpleApp(tk.Tk):
         self._card_step2 = self._build_step2_card()
         self._card_step3 = self._build_step3_card()
         self._card_step4 = self._build_step4_card()
-
-        self._btn_back = FlatButton(nav_bar, text="◀ Indietro", command=self._prev_step)
-        self._btn_back.pack(side="left")
-
-        self._btn_next = FlatButton(nav_bar, text="Avanti ▶", command=self._next_step, accent=True)
-        self._btn_next.pack(side="right")
 
     def _create_entry(self, parent, variable, width=None, **kwargs) -> tk.Entry:
         e = tk.Entry(
@@ -445,6 +439,7 @@ class InterpresonaSimpleApp(tk.Tk):
             self._game_path_var.set(path)
             self._source_type.set("sqpack")
             self._update_step1_inputs()
+            self._populate_sqpack_sheets_async()
 
     def _browse_input_folder(self):
         path = filedialog.askdirectory(title="Seleziona cartella contenente i file .exh/.exd")
