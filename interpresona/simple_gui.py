@@ -99,7 +99,7 @@ class FlatButton(tk.Button):
             if kw["state"] == "disabled":
                 kw["bg"] = self._disabled_bg
                 kw["fg"] = self._disabled_fg
-                kw["cursor"] = "default"
+                kw["cursor"] = "arrow"
             elif kw["state"] in ("normal", "active"):
                 kw["bg"] = self._normal_bg
                 kw["fg"] = TEXT_PRI
