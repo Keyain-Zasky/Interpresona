@@ -517,12 +517,160 @@ class InterpresonaSimpleApp(tk.Tk):
 
         threading.Thread(target=worker, args=(path_str,), daemon=True).start()
 
+class SheetSearchDialog(tk.Toplevel):
+    """Dialog to search and select a specific FFXIV EXD sheet."""
+
+    def __init__(self, parent, sheets: list[str], current_selected: str = "", on_select_callback=None):
+        super().__init__(parent)
+        self.title("🔍 Seleziona e Cerca Foglio FFXIV")
+        self.geometry("680x540")
+        self.minsize(550, 400)
+        self.configure(bg=BG_DARK)
+
+        self._sheets = sheets
+        self._on_select = on_select_callback
+        self.grab_set()
+
+        self._build_ui(current_selected)
+
+    def _build_ui(self, current_selected: str):
+        pad = tk.Frame(self, bg=BG_DARK, padx=20, pady=16)
+        pad.pack(fill="both", expand=True)
+
+        tk.Label(pad, text="🔍 Seleziona e Cerca Foglio di Gioco", bg=BG_DARK, fg=ACCENT_LIGHT, font=FONT_HEAD).pack(anchor="w", pady=(0, 4))
+        tk.Label(pad, text="Trova velocemente il foglio desiderato digitando il nome nel campo di ricerca:", bg=BG_DARK, fg=TEXT_SEC, font=FONT_BODY).pack(anchor="w", pady=(0, 12))
+
+        # Search Bar Box
+        search_box = tk.Frame(pad, bg=BG_CARD, padx=12, pady=8, bd=1, highlightbackground=BORDER, highlightthickness=1)
+        search_box.pack(fill="x", pady=(0, 10))
+
+        tk.Label(search_box, text="🔍 Cerca Foglio:", bg=BG_CARD, fg=TEXT_SEC, font=FONT_BODY).pack(side="left", padx=(0, 8))
+        self._search_var = tk.StringVar()
+        self._search_var.trace_add("write", lambda *args: self._populate_list())
+
+        s_entry = tk.Entry(search_box, textvariable=self._search_var, bg=BG_INPUT, fg=TEXT_PRI, insertbackground=TEXT_PRI, font=FONT_BODY, bd=0, relief="flat")
+        s_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
+        s_entry.focus_set()
+
+        # Category Pill Shortcuts
+        cat_box = tk.Frame(pad, bg=BG_DARK)
+        cat_box.pack(fill="x", pady=(0, 10))
+
+        cats = [
+            ("Tutti i Fogli", ""),
+            ("Interfaccia (Addon)", "Addon"),
+            ("Oggetti (Item)", "Item"),
+            ("Quest", "Quest"),
+            ("Azioni", "Action"),
+            ("Stati", "Status"),
+        ]
+        for label, kw in cats:
+            FlatButton(cat_box, text=label, command=lambda k=kw: self._search_var.set(k)).pack(side="left", padx=2)
+
+        # List Container (Treeview with Scrollbars)
+        list_frame = tk.Frame(pad, bg=BG_DARK)
+        list_frame.pack(fill="both", expand=True, pady=(0, 12))
+
+        self._tree = ttk.Treeview(list_frame, columns=("sheet", "type"), show="headings", selectmode="browse")
+        self._tree.heading("sheet", text="Nome Foglio di Gioco")
+        self._tree.heading("type", text="Categoria / Descrizione")
+
+        self._tree.column("sheet", width=280, anchor="w")
+        self._tree.column("type", width=240, anchor="w")
+
+        vsb = ttk.Scrollbar(list_frame, orient="vertical", command=self._tree.yview)
+        self._tree.configure(yscrollcommand=vsb.set)
+
+        vsb.pack(side="right", fill="y")
+        self._tree.pack(fill="both", expand=True)
+
+        self._tree.bind("<Double-1>", lambda e: self._confirm_selection())
+
+        # Action Buttons
+        btn_box = tk.Frame(pad, bg=BG_DARK)
+        btn_box.pack(fill="x")
+
+        FlatButton(btn_box, text="✓ Seleziona Foglio", command=self._confirm_selection, accent=True).pack(side="right", padx=(8, 0))
+        FlatButton(btn_box, text="Annulla", command=self.destroy).pack(side="right")
+
+        self._populate_list()
+
+    def _populate_list(self):
+        for item in self._tree.get_children():
+            self._tree.delete(item)
+
+        q = self._search_var.get().lower().strip()
+
+        for s in self._sheets:
+            if q and q not in s.lower():
+                continue
+
+            if s.startswith("Addon") or s in ("LogMessage", "CustomTalk"):
+                cat = "🎨 Interfaccia / UI"
+            elif "Item" in s or "Equip" in s:
+                cat = "⚔ Oggetto / Equip"
+            elif "Quest" in s or "Fate" in s:
+                cat = "📜 Quest / Evento"
+            elif "Action" in s or "Skill" in s or "Status" in s:
+                cat = "⚡ Azione / Abilità"
+            else:
+                cat = "📄 Dati di Gioco"
+
+            self._tree.insert("", "end", values=(s, cat))
+
+    def _confirm_selection(self):
+        sel = self._tree.selection()
+        if not sel:
+            return
+        val = self._tree.item(sel[0])["values"][0]
+        if self._on_select:
+            self._on_select(str(val))
+        self.destroy()
+
+
     def _setup_styles(self):
         style = ttk.Style(self)
         style.theme_use("clam")
         style.configure(".", background=BG_DARK, foreground=TEXT_PRI)
         style.configure("TProgressbar", thickness=16, troughcolor=BG_MID, background=ACCENT, bordercolor=BG_MID)
         
+        # High contrast Treeview styling
+        style.configure("Treeview",
+            background=BG_MID,
+            foreground=TEXT_PRI,
+            fieldbackground=BG_MID,
+            rowheight=28,
+            font=FONT_BODY,
+            borderwidth=0,
+            relief="flat"
+        )
+        style.configure("Treeview.Heading",
+            background=BG_INPUT,
+            foreground=ACCENT_LIGHT,
+            font=FONT_HEAD,
+            relief="flat",
+            borderwidth=1,
+            bordercolor=BORDER
+        )
+        style.map("Treeview",
+            background=[("selected", ACCENT)],
+            foreground=[("selected", TEXT_PRI)]
+        )
+
+        # Modern Dark Flat Scrollbar Styling (Removes 1995 3D bevels!)
+        style.configure("TScrollbar",
+            troughcolor=BG_DARK,
+            background=BORDER,
+            bordercolor=BG_DARK,
+            arrowcolor=ACCENT_LIGHT,
+            relief="flat",
+            width=12
+        )
+        style.map("TScrollbar",
+            background=[("active", ACCENT), ("pressed", ACCENT_LIGHT)],
+            arrowcolor=[("active", TEXT_PRI)]
+        )
+
         # High contrast combobox styling
         style.configure("TCombobox",
                         fieldbackground=BG_INPUT,
@@ -695,9 +843,11 @@ class InterpresonaSimpleApp(tk.Tk):
                 textvariable=self._selected_sqpack_sheet_var,
                 values=["(Tutti i fogli - Batch Completo)"],
                 state="readonly",
-                width=34
+                width=30
             )
             self._sqpack_sheet_cmb.pack(side="left")
+
+            FlatButton(sheet_sel_frame, text="🔍 Cerca & Sfoglia Fogli...", command=self._open_sheet_search_dialog, accent=True).pack(side="left", padx=(8, 0))
 
         card_info = {
             "frame": frame,
@@ -721,6 +871,24 @@ class InterpresonaSimpleApp(tk.Tk):
             w.bind("<Button-1>", on_click)
 
         return card_info
+
+    def _open_sheet_search_dialog(self):
+        path_str = self._game_path_var.get().strip().strip('"')
+        if not path_str or not Path(path_str).exists():
+            messagebox.showinfo("Seleziona Cartella Gioco", "Seleziona prima la cartella di gioco FFXIV valida (SqPack).")
+            return
+        
+        try:
+            reader = SqPackReader.from_game_directory(Path(path_str))
+            sheets = ["(Tutti i fogli - Batch Completo)"] + sorted(reader.list_exd_sheets())
+            def on_select(chosen: str):
+                self._selected_sqpack_sheet_var.set(chosen)
+                self._sqpack_sheet_cmb.config(values=sheets)
+                self._session_records.clear()
+            
+            SheetSearchDialog(self, sheets, current_selected=self._selected_sqpack_sheet_var.get(), on_select_callback=on_select)
+        except Exception as e:
+            messagebox.showerror("Errore Scansione Cartella", f"Impossibile scansionare la cartella: {e}")
 
     def _update_step1_inputs(self):
         active_key = self._source_type.get()
