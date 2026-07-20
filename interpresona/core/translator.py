@@ -220,9 +220,15 @@ class LibreTranslateTranslator(BaseTranslator):
         return results
 
     def _translate_one(self, text: str) -> str:
+        import re
+        padded = re.sub(r"([^\s\{])\{(\d+)\}", r"\1 {\2}", text)
+        padded = re.sub(r"\{(\d+)\}([^\s\}])", r"{\1} \2", padded)
+
         for attempt in range(3):
             try:
-                return self._raw_translate_request(text)
+                res = self._raw_translate_request(padded)
+                res = re.sub(r"\s+", " ", res).strip()
+                return res
             except Exception as exc:
                 if attempt == 2:
                     return text

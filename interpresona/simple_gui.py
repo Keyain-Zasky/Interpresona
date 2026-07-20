@@ -143,8 +143,9 @@ class StringInspectorWindow(tk.Toplevel):
         tot = len(self._records)
         errs = sum(1 for r in self._records if r["status"] == "error")
         oks = sum(1 for r in self._records if r["status"] == "ok")
+        bypassed = sum(1 for r in self._records if r["status"] == "bypassed")
 
-        stats_str = f"Totali: {tot}  |  ✓ Tradotte: {oks}  |  ✖ Errori: {errs}"
+        stats_str = f"Totali: {tot}  |  ✓ Tradotte: {oks}  |  ⏭ Bypass: {bypassed}  |  ✖ Errori: {errs}"
         tk.Label(hdr, text=stats_str, bg=BG_MID, fg=TEXT_PRI, font=FONT_SUB).pack(side="right")
 
         # Control Bar (Search & Filters)
@@ -158,14 +159,15 @@ class StringInspectorWindow(tk.Toplevel):
         search_entry = tk.Entry(
             bar, textvariable=self._search_var, bg=BG_INPUT, fg=TEXT_PRI,
             insertbackground=TEXT_PRI, font=FONT_BODY, bd=0, relief="flat",
-            highlightthickness=1, highlightbackground=BORDER, highlightcolor=ACCENT, width=30
+            highlightthickness=1, highlightbackground=BORDER, highlightcolor=ACCENT, width=24
         )
-        search_entry.pack(side="left", padx=(0, 16))
+        search_entry.pack(side="left", padx=(0, 12))
 
         # Filter Buttons
         FlatButton(bar, text=f"Tutti ({tot})", command=lambda: self._set_filter("all")).pack(side="left", padx=2)
-        FlatButton(bar, text=f"✖ Solo Errori ({errs})", command=lambda: self._set_filter("errors"), danger=True).pack(side="left", padx=2)
         FlatButton(bar, text=f"✓ Tradotti ({oks})", command=lambda: self._set_filter("ok"), accent=True).pack(side="left", padx=2)
+        FlatButton(bar, text=f"⏭ Bypass ({bypassed})", command=lambda: self._set_filter("bypassed")).pack(side="left", padx=2)
+        FlatButton(bar, text=f"✖ Solo Errori ({errs})", command=lambda: self._set_filter("errors"), danger=True).pack(side="left", padx=2)
 
         # Table Container (Treeview with Scrollbars)
         tbl_frame = tk.Frame(self, bg=BG_DARK, padx=16, pady=4)
@@ -194,6 +196,7 @@ class StringInspectorWindow(tk.Toplevel):
 
         self._tree.tag_configure("error", background="#451a1a", foreground="#f87171")
         self._tree.tag_configure("ok", background="#1c2032", foreground="#ffffff")
+        self._tree.tag_configure("bypassed", background="#1a2d3e", foreground="#93c5fd")
 
         self._populate_table()
 
@@ -213,6 +216,8 @@ class StringInspectorWindow(tk.Toplevel):
                 continue
             if self._filter_type == "ok" and status != "ok":
                 continue
+            if self._filter_type == "bypassed" and status != "bypassed":
+                continue
 
             orig = r["original"]
             trans = r["translated"]
@@ -223,8 +228,8 @@ class StringInspectorWindow(tk.Toplevel):
                 if q not in orig.lower() and q not in trans.lower() and q not in sheet.lower() and q not in err_msg.lower():
                     continue
 
-            status_txt = f"✖ {err_msg}" if status == "error" else "✓ Tradotto"
-            tag = "error" if status == "error" else "ok"
+            status_txt = f"✖ {err_msg}" if status == "error" else ("⏭ Preservato (Bypass)" if status == "bypassed" else "✓ Tradotto")
+            tag = status
 
             self._tree.insert("", "end", values=(sheet, orig, trans, status_txt), tags=(tag,))
 
@@ -1017,12 +1022,13 @@ class InterpresonaSimpleApp(tk.Tk):
                                 ph_err = validate_placeholders(trans, rec.placeholders)
                                 if not ph_err:
                                     rec.translated_text = trans
+                                    st_code = "bypassed" if trans == rec.masked_text else "ok"
                                     self._session_records.append({
                                         "sheet": sheet_name,
                                         "original": rec.masked_text,
                                         "translated": trans,
-                                        "status": "ok",
-                                        "error_msg": ""
+                                        "status": st_code,
+                                        "error_msg": "Preservato (Bypass)" if st_code == "bypassed" else ""
                                     })
                                 else:
                                     # Restore original text so binary file stays 100% valid
@@ -1113,12 +1119,13 @@ class InterpresonaSimpleApp(tk.Tk):
                                 ph_err = validate_placeholders(trans, rec.placeholders)
                                 if not ph_err:
                                     rec.translated_text = trans
+                                    st_code = "bypassed" if trans == rec.masked_text else "ok"
                                     self._session_records.append({
                                         "sheet": sheet_stem,
                                         "original": rec.masked_text,
                                         "translated": trans,
-                                        "status": "ok",
-                                        "error_msg": ""
+                                        "status": st_code,
+                                        "error_msg": "Preservato (Bypass)" if st_code == "bypassed" else ""
                                     })
                                 else:
                                     rec.translated_text = rec.masked_text
@@ -1183,12 +1190,13 @@ class InterpresonaSimpleApp(tk.Tk):
                         ph_err = validate_placeholders(trans, rec.placeholders)
                         if not ph_err:
                             rec.translated_text = trans
+                            st_code = "bypassed" if trans == rec.masked_text else "ok"
                             self._session_records.append({
                                 "sheet": sheet_stem,
                                 "original": rec.masked_text,
                                 "translated": trans,
-                                "status": "ok",
-                                "error_msg": ""
+                                "status": st_code,
+                                "error_msg": "Preservato (Bypass)" if st_code == "bypassed" else ""
                             })
                         else:
                             rec.translated_text = rec.masked_text
