@@ -36,22 +36,23 @@ from interpresona.core.translator import (
 )
 
 # ---------------------------------------------------------------------------
-# Styling palette (High-contrast, sleek modern dark theme)
+# Styling palette (Ultra High-Contrast Modern Dark Theme)
 # ---------------------------------------------------------------------------
-BG_DARK       = "#0b0d14"
-BG_MID        = "#121522"
-BG_CARD       = "#181b2a"
-BG_SELECT     = "#1f2438"
-BG_HOVER      = "#262b40"
+BG_DARK       = "#0d0f17"
+BG_MID        = "#141724"
+BG_CARD       = "#1c2032"
+BG_INPUT      = "#22273d"
+BG_SELECT     = "#262c47"
+BG_HOVER      = "#2d3454"
 ACCENT        = "#7c3aed"
-ACCENT_LIGHT  = "#a78bfa"
+ACCENT_LIGHT  = "#c084fc"
 SUCCESS       = "#10b981"
 WARNING       = "#f59e0b"
 ERROR_COL     = "#ef4444"
-TEXT_PRI      = "#f8fafc"
-TEXT_SEC      = "#94a3b8"
-TEXT_DIM      = "#64748b"
-BORDER        = "#282c44"
+TEXT_PRI      = "#ffffff"
+TEXT_SEC      = "#cbd5e1"
+TEXT_DIM      = "#94a3b8"
+BORDER        = "#333a56"
 BORDER_SELECT = "#7c3aed"
 
 FONT_HEAD     = ("Segoe UI", 14, "bold")
@@ -76,16 +77,45 @@ def enable_high_dpi_awareness():
 
 class FlatButton(tk.Button):
     def __init__(self, parent, text="", command=None, accent=False, danger=False, **kw):
-        bg = ACCENT if accent else (ERROR_COL if danger else BG_CARD)
-        fg = TEXT_PRI
+        self._accent = accent
+        self._danger = danger
+        self._normal_bg = ACCENT if accent else (ERROR_COL if danger else "#282d44")
+        self._disabled_bg = "#24283b"
+        self._disabled_fg = "#64748b"
+
         super().__init__(
-            parent, text=text, command=command, bg=bg, fg=fg,
-            activebackground=ACCENT_LIGHT if accent else BG_HOVER,
-            activeforeground=TEXT_PRI, relief="flat", bd=0,
+            parent, text=text, command=command, bg=self._normal_bg, fg=TEXT_PRI,
+            activebackground=ACCENT_LIGHT if accent else (BG_HOVER if not danger else "#f87171"),
+            activeforeground=TEXT_PRI,
+            disabledforeground=self._disabled_fg,
+            relief="flat", bd=0,
             font=FONT_SUB, cursor="hand2", padx=16, pady=8, **kw
         )
-        self.bind("<Enter>", lambda e: self.config(bg=ACCENT_LIGHT if accent else BG_HOVER))
-        self.bind("<Leave>", lambda e: self.config(bg=bg))
+        self.bind("<Enter>", self._on_enter)
+        self.bind("<Leave>", self._on_leave)
+
+    def config(self, cnf=None, **kw):
+        if "state" in kw:
+            if kw["state"] == "disabled":
+                kw["bg"] = self._disabled_bg
+                kw["fg"] = self._disabled_fg
+                kw["cursor"] = "default"
+            elif kw["state"] in ("normal", "active"):
+                kw["bg"] = self._normal_bg
+                kw["fg"] = TEXT_PRI
+                kw["cursor"] = "hand2"
+        super().config(cnf, **kw)
+
+    def configure(self, cnf=None, **kw):
+        self.config(cnf, **kw)
+
+    def _on_enter(self, e):
+        if self.cget("state") != "disabled":
+            self.config(bg=ACCENT_LIGHT if self._accent else (BG_HOVER if not self._danger else "#f87171"))
+
+    def _on_leave(self, e):
+        if self.cget("state") != "disabled":
+            self.config(bg=self._normal_bg)
 
 
 class InterpresonaSimpleApp(tk.Tk):
@@ -158,8 +188,27 @@ class InterpresonaSimpleApp(tk.Tk):
         style = ttk.Style(self)
         style.theme_use("clam")
         style.configure(".", background=BG_DARK, foreground=TEXT_PRI)
-        style.configure("TProgressbar", thickness=14, troughcolor=BG_MID, background=ACCENT, bordercolor=BG_MID)
-        style.configure("TCombobox", fieldbackground=BG_CARD, background=BG_MID, foreground=TEXT_PRI, padding=4)
+        style.configure("TProgressbar", thickness=16, troughcolor=BG_MID, background=ACCENT, bordercolor=BG_MID)
+        
+        # High contrast combobox styling
+        style.configure("TCombobox",
+                        fieldbackground=BG_INPUT,
+                        background=BG_INPUT,
+                        foreground=TEXT_PRI,
+                        arrowcolor=TEXT_PRI,
+                        bordercolor=BORDER,
+                        darkcolor=BG_INPUT,
+                        lightcolor=BG_INPUT,
+                        padding=6)
+        style.map("TCombobox",
+                  fieldbackground=[("readonly", BG_INPUT), ("focus", BG_INPUT)],
+                  foreground=[("readonly", TEXT_PRI), ("focus", TEXT_PRI)],
+                  selectbackground=[("readonly", ACCENT)])
+        
+        self.option_add("*TCombobox*Listbox.background", BG_INPUT)
+        self.option_add("*TCombobox*Listbox.foreground", TEXT_PRI)
+        self.option_add("*TCombobox*Listbox.selectBackground", ACCENT)
+        self.option_add("*TCombobox*Listbox.selectForeground", TEXT_PRI)
 
     def _build_ui(self):
         # Header bar
@@ -215,6 +264,24 @@ class InterpresonaSimpleApp(tk.Tk):
 
         self._btn_next = FlatButton(nav_bar, text="Avanti ▶", command=self._next_step, accent=True)
         self._btn_next.pack(side="right")
+
+    def _create_entry(self, parent, variable, width=None, **kwargs) -> tk.Entry:
+        e = tk.Entry(
+            parent,
+            textvariable=variable,
+            width=width,
+            bg=BG_INPUT,
+            fg=TEXT_PRI,
+            insertbackground=TEXT_PRI,
+            font=FONT_BODY,
+            bd=0,
+            relief="flat",
+            highlightthickness=1,
+            highlightbackground=BORDER,
+            highlightcolor=ACCENT,
+            **kwargs
+        )
+        return e
 
     # ------------------------------------------------------------------
     # Step 1: Input Source Card (Custom Anti-Aliased Radio Cards)
@@ -277,7 +344,7 @@ class InterpresonaSimpleApp(tk.Tk):
         entry_frame = tk.Frame(frame, bg=BG_MID)
         entry_frame.pack(fill="x", padx=24)
 
-        entry = tk.Entry(entry_frame, textvariable=var, bg=BG_CARD, fg=TEXT_PRI, font=FONT_BODY, bd=1, relief="solid")
+        entry = self._create_entry(entry_frame, variable=var)
         entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
 
         btn = FlatButton(entry_frame, text="Sfoglia...", command=browse_cmd)
@@ -292,7 +359,6 @@ class InterpresonaSimpleApp(tk.Tk):
             "hdr_line": hdr_line,
         }
 
-        # Bind click events on all non-entry card elements
         def on_click(e=None):
             self._source_type.set(key)
             self._update_step1_inputs()
@@ -364,23 +430,23 @@ class InterpresonaSimpleApp(tk.Tk):
         # LibreTranslate Fields
         self._libre_frame = tk.Frame(self._cfg_panel, bg=BG_MID)
         tk.Label(self._libre_frame, text="URL Server LibreTranslate:", bg=BG_MID, fg=TEXT_PRI, font=FONT_BODY).pack(anchor="w")
-        tk.Entry(self._libre_frame, textvariable=self._libre_url_var, bg=BG_CARD, fg=TEXT_PRI, font=FONT_BODY, bd=1, relief="solid").pack(fill="x", pady=(4, 8))
+        self._create_entry(self._libre_frame, variable=self._libre_url_var).pack(fill="x", pady=(4, 8))
         tk.Label(self._libre_frame, text="Endpoint predefinito impostato su https://translate.systemofagamer.it", bg=BG_MID, fg=TEXT_DIM, font=FONT_SMALL).pack(anchor="w")
 
         # DeepL Fields
         self._deepl_frame = tk.Frame(self._cfg_panel, bg=BG_MID)
         tk.Label(self._deepl_frame, text="Chiave API DeepL (Authentication Key):", bg=BG_MID, fg=TEXT_PRI, font=FONT_BODY).pack(anchor="w")
-        tk.Entry(self._deepl_frame, textvariable=self._deepl_key_var, bg=BG_CARD, fg=TEXT_PRI, font=FONT_BODY, bd=1, relief="solid").pack(fill="x", pady=(4, 8))
+        self._create_entry(self._deepl_frame, variable=self._deepl_key_var).pack(fill="x", pady=(4, 8))
 
         # Language selection
         lang_frame = tk.Frame(self._cfg_panel, bg=BG_MID)
         lang_frame.pack(fill="x", pady=(12, 0))
 
         tk.Label(lang_frame, text="Da Lingua:", bg=BG_MID, fg=TEXT_SEC, font=FONT_BODY).pack(side="left", padx=(0, 6))
-        tk.Entry(lang_frame, textvariable=self._source_lang_var, width=6, bg=BG_CARD, fg=TEXT_PRI, font=FONT_BODY).pack(side="left", padx=(0, 20))
+        self._create_entry(lang_frame, variable=self._source_lang_var, width=6).pack(side="left", padx=(0, 20))
 
         tk.Label(lang_frame, text="A Lingua:", bg=BG_MID, fg=TEXT_SEC, font=FONT_BODY).pack(side="left", padx=(0, 6))
-        tk.Entry(lang_frame, textvariable=self._target_lang_var, width=6, bg=BG_CARD, fg=TEXT_PRI, font=FONT_BODY).pack(side="left")
+        self._create_entry(lang_frame, variable=self._target_lang_var, width=6).pack(side="left")
 
         # Test Connection Button
         test_frame = tk.Frame(card, bg=BG_CARD)
@@ -444,7 +510,7 @@ class InterpresonaSimpleApp(tk.Tk):
 
         e_frame = tk.Frame(out_box, bg=BG_MID)
         e_frame.pack(fill="x")
-        tk.Entry(e_frame, textvariable=self._output_folder_var, bg=BG_CARD, fg=TEXT_PRI, font=FONT_BODY, bd=1, relief="solid").pack(side="left", fill="x", expand=True, padx=(0, 8))
+        self._create_entry(e_frame, variable=self._output_folder_var).pack(side="left", fill="x", expand=True, padx=(0, 8))
         FlatButton(e_frame, text="Sfoglia...", command=self._browse_output_folder).pack(side="right")
 
         tk.Label(card, text="💡 Suggerimento: Puoi creare una nuova cartella qualsiasi per conservare i file tradotti pronti per il gioco.", bg=BG_CARD, fg=TEXT_DIM, font=FONT_SMALL).pack(anchor="w", pady=(20, 0))
@@ -489,8 +555,8 @@ class InterpresonaSimpleApp(tk.Tk):
         self._btn_open_out.config(state="disabled")
 
         # Live log view
-        tk.Label(card, text="Registro Eventi Traduzione:", bg=BG_CARD, fg=TEXT_DIM, font=FONT_SMALL).pack(anchor="w", pady=(8, 2))
-        self._log_text = scrolledtext.ScrolledText(card, bg=BG_MID, fg=TEXT_PRI, font=FONT_MONO, height=10, state="disabled", relief="flat")
+        tk.Label(card, text="Registro Eventi Traduzione:", bg=BG_CARD, fg=TEXT_SEC, font=FONT_SUB).pack(anchor="w", pady=(12, 4))
+        self._log_text = scrolledtext.ScrolledText(card, bg=BG_INPUT, fg=TEXT_PRI, font=FONT_MONO, height=10, state="disabled", relief="flat", insertbackground=TEXT_PRI)
         self._log_text.pack(fill="both", expand=True)
 
         self._log_text.tag_config("info", foreground=TEXT_SEC)
