@@ -36,24 +36,25 @@ from interpresona.core.translator import (
 )
 
 # ---------------------------------------------------------------------------
-# Styling palette (Ultra High-Contrast Modern Dark Theme)
+# Styling palette (Ultra High-End Slate/Violet Modern Dark Theme)
 # ---------------------------------------------------------------------------
-BG_DARK       = "#0d0f17"
-BG_MID        = "#141724"
-BG_CARD       = "#1c2032"
-BG_INPUT      = "#22273d"
-BG_SELECT     = "#262c47"
-BG_HOVER      = "#2d3454"
-ACCENT        = "#7c3aed"
-ACCENT_LIGHT  = "#c084fc"
-SUCCESS       = "#10b981"
-WARNING       = "#f59e0b"
-ERROR_COL     = "#ef4444"
-TEXT_PRI      = "#ffffff"
-TEXT_SEC      = "#cbd5e1"
-TEXT_DIM      = "#94a3b8"
-BORDER        = "#333a56"
-BORDER_SELECT = "#7c3aed"
+BG_DARK       = "#090d16"  # Deep Onyx Dark Background
+BG_MID        = "#111625"  # Card / Panel Container
+BG_CARD       = "#182032"  # Card Active Area
+BG_INPUT      = "#1f293d"  # Input Fields
+BG_SELECT     = "#262045"  # Active Selection Card
+BG_HOVER      = "#2e374d"  # Hover highlight
+ACCENT        = "#7c3aed"  # Vibrant Violet Primary
+ACCENT_LIGHT  = "#a78bfa"  # Soft Purple Accent
+ACCENT_GLOW   = "#c084fc"  # Bright Glow Text
+SUCCESS       = "#10b981"  # Emerald Green
+WARNING       = "#f59e0b"  # Warm Amber Gold
+ERROR_COL     = "#f43f5e"  # Rose Red
+TEXT_PRI      = "#f8fafc"  # Bright Slate White
+TEXT_SEC      = "#cbd5e1"  # Muted Slate
+TEXT_DIM      = "#64748b"  # Soft Dark Gray
+BORDER        = "#2e374d"  # Subdued Slate Border
+BORDER_SELECT = "#8b5cf6"  # Glowing Border
 
 FONT_HEAD     = ("Segoe UI", 14, "bold")
 FONT_SUB      = ("Segoe UI", 10, "bold")
@@ -79,13 +80,13 @@ class FlatButton(tk.Button):
     def __init__(self, parent, text="", command=None, accent=False, danger=False, **kw):
         self._accent = accent
         self._danger = danger
-        self._normal_bg = ACCENT if accent else (ERROR_COL if danger else "#282d44")
-        self._disabled_bg = "#24283b"
-        self._disabled_fg = "#64748b"
+        self._normal_bg = ACCENT if accent else (ERROR_COL if danger else "#242c44")
+        self._disabled_bg = "#1b2030"
+        self._disabled_fg = "#475569"
 
         super().__init__(
             parent, text=text, command=command, bg=self._normal_bg, fg=TEXT_PRI,
-            activebackground=ACCENT_LIGHT if accent else (BG_HOVER if not danger else "#f87171"),
+            activebackground=ACCENT_LIGHT if accent else (BG_HOVER if not danger else "#fb7185"),
             activeforeground=TEXT_PRI,
             disabledforeground=self._disabled_fg,
             relief="flat", bd=0,
@@ -1246,14 +1247,14 @@ class InterpresonaSimpleApp(tk.Tk):
         # Update step bar styling
         for idx, (circle, name_lbl) in enumerate(self._step_labels, start=1):
             if idx == step_num:
-                circle.config(bg=ACCENT, fg=TEXT_PRI)
-                name_lbl.config(fg=ACCENT_LIGHT, font=FONT_SUB)
+                circle.config(bg=ACCENT, fg=TEXT_PRI, text=str(idx))
+                name_lbl.config(fg=ACCENT_GLOW, font=FONT_HEAD)
             elif idx < step_num:
-                circle.config(bg=SUCCESS, fg=TEXT_PRI)
-                name_lbl.config(fg=TEXT_PRI, font=FONT_BODY)
+                circle.config(bg=SUCCESS, fg=TEXT_PRI, text="✓")
+                name_lbl.config(fg=SUCCESS, font=FONT_SUB)
             else:
-                circle.config(bg=BG_CARD, fg=TEXT_SEC)
-                name_lbl.config(fg=TEXT_SEC, font=FONT_BODY)
+                circle.config(bg=BG_CARD, fg=TEXT_DIM, text=str(idx))
+                name_lbl.config(fg=TEXT_DIM, font=FONT_BODY)
 
         # Show target card
         if step_num == 1:
