@@ -201,6 +201,10 @@ class LibreTranslateTranslator(BaseTranslator):
                 is_bypass = True
             elif len(re.findall(r"[a-zA-Z]", cleaned)) < 3:
                 is_bypass = True
+            else:
+                cleaned_no_syms = re.sub(r"[ \t\r\n.,;:!?'\"`~@#$%^&*()_+={}\[\]|\\<>\-※《》\/\\%0-9\ue000-\ue0ff]", "", cleaned)
+                if cleaned_no_syms.isupper() and len(cleaned_no_syms) <= 5:
+                    is_bypass = True
 
             if is_bypass:
                 results.append(text)
@@ -229,13 +233,18 @@ class LibreTranslateTranslator(BaseTranslator):
 
         masked = re.sub(r"\{(\d+)\}\s*\'s", repl, text)
         masked = re.sub(r"\{(\d+)\}", repl, masked)
-        masked_clean = re.sub(r"\s+", " ", masked).strip()
+        
+        # Replace [ VARn ] with ( VARn ) for MT request to prevent bracket header stripping
+        masked_mt = re.sub(r"\[\s*(VAR\d+)\s*\]", r"(\1)", masked)
+        masked_clean = re.sub(r"\s+", " ", masked_mt).strip()
 
         for attempt in range(3):
             try:
                 res_raw = self._raw_translate_request(masked_clean)
                 res = re.sub(r"\s+", " ", res_raw).strip()
                 for tok, orig in mapping.items():
+                    res = re.sub(r"\(" + re.escape(tok) + r"\)", orig, res, flags=re.IGNORECASE)
+                    res = re.sub(r"\[" + re.escape(tok) + r"\]", orig, res, flags=re.IGNORECASE)
                     res = re.sub(r"\b" + re.escape(tok) + r"\b", orig, res, flags=re.IGNORECASE)
                     if tok not in res and tok.lower() not in res.lower():
                         res = re.sub(re.escape(tok), orig, res, flags=re.IGNORECASE)
