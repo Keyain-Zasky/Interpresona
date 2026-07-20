@@ -130,14 +130,15 @@ class InterpresonaSimpleApp(tk.Tk):
             pass
 
         self.title("Interpresona — Guided Translation Wizard")
-        self.geometry("860x640")
-        self.minsize(780, 560)
+        self.geometry("900x700")
+        self.minsize(820, 580)
         self.configure(bg=BG_DARK)
 
         # Wizard state
         self._current_step = 1
         self._source_type = tk.StringVar(value="sqpack")  # sqpack, folder, file
         self._game_path_var = tk.StringVar()
+        self._selected_sqpack_sheet_var = tk.StringVar(value="(Tutti i fogli - Batch Completo)")
         self._input_folder_var = tk.StringVar()
         self._input_file_var = tk.StringVar()
 
@@ -176,13 +177,32 @@ class InterpresonaSimpleApp(tk.Tk):
             if c.exists():
                 if (c / "game" / "sqpack").exists():
                     self._game_path_var.set(str(c))
+                    self._populate_sqpack_sheets_async()
                     return
                 elif list(c.glob("*.index")) or list(c.glob("*.win32.index")):
                     self._game_path_var.set(str(c))
+                    self._populate_sqpack_sheets_async()
                     return
                 elif (c / "exd").exists() or (c / "ffxiv").exists():
                     self._game_path_var.set(str(c))
+                    self._populate_sqpack_sheets_async()
                     return
+
+    def _populate_sqpack_sheets_async(self):
+        def worker():
+            path_str = self._game_path_var.get().strip().strip('"')
+            if not path_str or not Path(path_str).exists():
+                return
+            try:
+                reader = SqPackReader.from_game_directory(Path(path_str))
+                sheets = reader.list_exd_sheets()
+                if sheets:
+                    items = ["(Tutti i fogli - Batch Completo)"] + sorted(sheets)
+                    self.after(0, lambda: self._sqpack_sheet_cmb.config(values=items))
+            except Exception:
+                pass
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _setup_styles(self):
         style = ttk.Style(self)
@@ -211,9 +231,9 @@ class InterpresonaSimpleApp(tk.Tk):
         self.option_add("*TCombobox*Listbox.selectForeground", TEXT_PRI)
 
     def _build_ui(self):
-        # Header bar
+        # Header bar (Top)
         hdr = tk.Frame(self, bg=BG_MID, pady=10, padx=16)
-        hdr.pack(fill="x")
+        hdr.pack(fill="x", side="top")
 
         tk.Label(hdr, text="Interpresona", bg=BG_MID, fg=ACCENT_LIGHT, font=("Segoe UI", 16, "bold")).pack(side="left")
         tk.Label(hdr, text=" Wizard", bg=BG_MID, fg=TEXT_PRI, font=("Segoe UI", 16)).pack(side="left")
@@ -222,9 +242,9 @@ class InterpresonaSimpleApp(tk.Tk):
         # Advanced Mode Switch Button
         FlatButton(hdr, text="Modalità Avanzata ⚙", command=self._switch_to_advanced, accent=False).pack(side="right")
 
-        # Top Stepper Bar
-        self._stepper_frame = tk.Frame(self, bg=BG_DARK, pady=14)
-        self._stepper_frame.pack(fill="x", padx=16)
+        # Top Stepper Bar (Top)
+        self._stepper_frame = tk.Frame(self, bg=BG_DARK, pady=12)
+        self._stepper_frame.pack(fill="x", side="top", padx=16)
 
         self._step_labels = []
         steps_info = [
@@ -245,19 +265,25 @@ class InterpresonaSimpleApp(tk.Tk):
 
             self._step_labels.append((circle, name_lbl))
 
-        # Main content card stack
+        # Bottom navigation bar - ALWAYS PINNED TO BOTTOM FIRST!
+        nav_bar = tk.Frame(self, bg=BG_MID, pady=10, padx=16)
+        nav_bar.pack(fill="x", side="bottom")
+
+        self._btn_back = FlatButton(nav_bar, text="◀ Indietro", command=self._prev_step)
+        self._btn_back.pack(side="left")
+
+        self._btn_next = FlatButton(nav_bar, text="Avanti ▶", command=self._next_step, accent=True)
+        self._btn_next.pack(side="right")
+
+        # Main content card stack (Middle remaining space)
         self._card_container = tk.Frame(self, bg=BG_DARK, padx=16, pady=4)
-        self._card_container.pack(fill="both", expand=True)
+        self._card_container.pack(fill="both", expand=True, side="top")
 
         # Create step cards
         self._card_step1 = self._build_step1_card()
         self._card_step2 = self._build_step2_card()
         self._card_step3 = self._build_step3_card()
         self._card_step4 = self._build_step4_card()
-
-        # Bottom navigation bar
-        nav_bar = tk.Frame(self, bg=BG_MID, pady=10, padx=16)
-        nav_bar.pack(fill="x", side="bottom")
 
         self._btn_back = FlatButton(nav_bar, text="◀ Indietro", command=self._prev_step)
         self._btn_back.pack(side="left")
@@ -298,9 +324,10 @@ class InterpresonaSimpleApp(tk.Tk):
         self._opt_cards["sqpack"] = self._create_option_card(
             card, key="sqpack",
             title="🎮 Cartella di Gioco FFXIV (SqPack completo)",
-            subtitle="Traduce direttamente i file .exd leggendo gli archivi di gioco (consigliato per traduzioni massive)",
+            subtitle="Traduce i file .exd leggendo gli archivi di gioco (tutti i fogli o uno specifico)",
             var=self._game_path_var,
-            browse_cmd=self._browse_game_dir
+            browse_cmd=self._browse_game_dir,
+            has_sheet_selector=True
         )
 
         # Option B: Folder with EXH/EXD Files Card
@@ -324,7 +351,7 @@ class InterpresonaSimpleApp(tk.Tk):
         self._update_step1_inputs()
         return card
 
-    def _create_option_card(self, parent, key: str, title: str, subtitle: str, var: tk.StringVar, browse_cmd) -> dict:
+    def _create_option_card(self, parent, key: str, title: str, subtitle: str, var: tk.StringVar, browse_cmd, has_sheet_selector=False) -> dict:
         frame = tk.Frame(parent, bg=BG_MID, padx=14, pady=12, bd=1, highlightbackground=BORDER, highlightthickness=1, cursor="hand2")
         frame.pack(fill="x", pady=6)
 
@@ -350,6 +377,21 @@ class InterpresonaSimpleApp(tk.Tk):
         btn = FlatButton(entry_frame, text="Sfoglia...", command=browse_cmd)
         btn.pack(side="right")
 
+        sheet_sel_frame = None
+        if has_sheet_selector:
+            sheet_sel_frame = tk.Frame(frame, bg=BG_MID)
+            sheet_sel_frame.pack(fill="x", padx=24, pady=(8, 0))
+
+            tk.Label(sheet_sel_frame, text="Foglio specifico:", bg=BG_MID, fg=TEXT_SEC, font=FONT_BODY, cursor="hand2").pack(side="left", padx=(0, 8))
+            self._sqpack_sheet_cmb = ttk.Combobox(
+                sheet_sel_frame,
+                textvariable=self._selected_sqpack_sheet_var,
+                values=["(Tutti i fogli - Batch Completo)"],
+                state="readonly",
+                width=34
+            )
+            self._sqpack_sheet_cmb.pack(side="left")
+
         card_info = {
             "frame": frame,
             "dot": dot_lbl,
@@ -357,13 +399,18 @@ class InterpresonaSimpleApp(tk.Tk):
             "sub": sub_lbl,
             "entry_frame": entry_frame,
             "hdr_line": hdr_line,
+            "sheet_sel_frame": sheet_sel_frame,
         }
 
         def on_click(e=None):
             self._source_type.set(key)
             self._update_step1_inputs()
 
-        for w in (frame, hdr_line, title_lbl, sub_lbl, dot_lbl):
+        bind_targets = [frame, hdr_line, title_lbl, sub_lbl, dot_lbl]
+        if sheet_sel_frame:
+            bind_targets.append(sheet_sel_frame)
+
+        for w in bind_targets:
             w.bind("<Button-1>", on_click)
 
         return card_info
@@ -383,6 +430,11 @@ class InterpresonaSimpleApp(tk.Tk):
             card["title"].config(bg=bg_col)
             card["sub"].config(bg=bg_col)
             card["dot"].config(bg=bg_col, fg=dot_col, text=dot_txt)
+            if card.get("sheet_sel_frame"):
+                card["sheet_sel_frame"].config(bg=bg_col)
+                for child in card["sheet_sel_frame"].winfo_children():
+                    if isinstance(child, tk.Label):
+                        child.config(bg=bg_col)
 
     def _browse_game_dir(self):
         path = filedialog.askdirectory(title="Seleziona cartella di gioco FFXIV (o sqpack)")
@@ -752,9 +804,17 @@ class InterpresonaSimpleApp(tk.Tk):
         self._log(f"Lettura archivi SqPack da {game_path}...", "info")
 
         reader = SqPackReader.from_game_directory(game_path)
-        sheets = reader.list_exd_sheets()
+        all_sheets = reader.list_exd_sheets()
+
+        sel_sheet = self._selected_sqpack_sheet_var.get().strip()
+        if sel_sheet and not sel_sheet.startswith("("):
+            sheets = [sel_sheet]
+            self._log(f"Processamento foglio singolo selezionato: '{sel_sheet}'", "info")
+        else:
+            sheets = all_sheets
+            self._log(f"Trovati {len(sheets)} fogli EXD da processare in batch.", "info")
+
         total_sheets = len(sheets)
-        self._log(f"Trovati {total_sheets} fogli EXD da processare.", "info")
 
         import re
         technical_key_pat = re.compile(r"^[A-Z][A-Z0-9_]{4,80}$")
