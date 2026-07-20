@@ -221,7 +221,9 @@ class LibreTranslateTranslator(BaseTranslator):
 
     def _translate_one(self, text: str) -> str:
         import re
-        padded = re.sub(r"([^\s\{])\{(\d+)\}", r"\1 {\2}", text)
+        # Normalize English possessive {n}'s -> {n} so NMT parser does not drop {n}
+        prep = re.sub(r"\{(\d+)\}\s*\'s", r"{\1}", text)
+        padded = re.sub(r"([^\s\{])\{(\d+)\}", r"\1 {\2}", prep)
         padded = re.sub(r"\{(\d+)\}([^\s\}])", r"{\1} \2", padded)
 
         for attempt in range(3):
