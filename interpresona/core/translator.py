@@ -221,15 +221,24 @@ class LibreTranslateTranslator(BaseTranslator):
 
     def _translate_one(self, text: str) -> str:
         import re
-        # Normalize English possessive {n}'s -> {n} so NMT parser does not drop {n}
-        prep = re.sub(r"\{(\d+)\}\s*\'s", r"{\1}", text)
-        padded = re.sub(r"([^\s\{])\{(\d+)\}", r"\1 {\2}", prep)
-        padded = re.sub(r"\{(\d+)\}([^\s\}])", r"{\1} \2", padded)
+        mapping = {}
+        def repl(m):
+            tok = f"VAR{m.group(1)}"
+            mapping[tok] = f"{{{m.group(1)}}}"
+            return f" {tok} "
+
+        masked = re.sub(r"\{(\d+)\}\s*\'s", repl, text)
+        masked = re.sub(r"\{(\d+)\}", repl, masked)
+        masked_clean = re.sub(r"\s+", " ", masked).strip()
 
         for attempt in range(3):
             try:
-                res = self._raw_translate_request(padded)
-                res = re.sub(r"\s+", " ", res).strip()
+                res_raw = self._raw_translate_request(masked_clean)
+                res = re.sub(r"\s+", " ", res_raw).strip()
+                for tok, orig in mapping.items():
+                    res = re.sub(r"\b" + re.escape(tok) + r"\b", orig, res, flags=re.IGNORECASE)
+                    if tok not in res and tok.lower() not in res.lower():
+                        res = re.sub(re.escape(tok), orig, res, flags=re.IGNORECASE)
                 return res
             except Exception as exc:
                 if attempt == 2:
