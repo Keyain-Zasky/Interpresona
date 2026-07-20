@@ -76,6 +76,88 @@ def enable_high_dpi_awareness():
             pass
 
 
+def apply_dark_title_bar(window):
+    """Apply dark mode titlebar on Windows 10 (build 17763+) and Windows 11."""
+    try:
+        import ctypes
+        window.update_idletasks()
+        hwnd = ctypes.windll.user32.GetParent(window.winfo_id())
+        if not hwnd:
+            hwnd = window.winfo_id()
+        DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+        value = ctypes.c_int(1)
+        res = ctypes.windll.dwmapi.DwmSetWindowAttribute(
+            hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ctypes.byref(value), ctypes.sizeof(value)
+        )
+        if res != 0:
+            DWMWA_USE_IMMERSIVE_DARK_MODE = 19
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ctypes.byref(value), ctypes.sizeof(value)
+            )
+    except Exception:
+        pass
+
+
+def apply_dark_popup_style(window):
+    """Apply dark clam theme, dark scrollbars, and dark titlebar to a window/dialog."""
+    apply_dark_title_bar(window)
+
+    style = ttk.Style(window)
+    style.theme_use("clam")
+    style.configure(".", background=BG_DARK, foreground=TEXT_PRI)
+
+    style.configure("Treeview",
+        background=BG_MID,
+        foreground=TEXT_PRI,
+        fieldbackground=BG_MID,
+        rowheight=28,
+        font=FONT_BODY,
+        borderwidth=0,
+        relief="flat"
+    )
+    style.configure("Treeview.Heading",
+        background=BG_CARD,
+        foreground=ACCENT_LIGHT,
+        font=FONT_HEAD,
+        relief="flat",
+        borderwidth=1,
+        bordercolor=BORDER
+    )
+    style.map("Treeview",
+        background=[("selected", ACCENT)],
+        foreground=[("selected", TEXT_PRI)]
+    )
+
+    style.configure("TScrollbar",
+        troughcolor=BG_DARK,
+        background=BORDER,
+        bordercolor=BG_DARK,
+        arrowcolor=ACCENT_LIGHT,
+        relief="flat",
+        width=14
+    )
+    style.map("TScrollbar",
+        background=[("active", ACCENT), ("pressed", ACCENT_LIGHT)],
+        arrowcolor=[("active", TEXT_PRI)]
+    )
+
+    style.configure("TCombobox",
+        fieldbackground=BG_INPUT,
+        background=BG_INPUT,
+        foreground=TEXT_PRI,
+        arrowcolor=TEXT_PRI,
+        bordercolor=BORDER,
+        darkcolor=BG_INPUT,
+        lightcolor=BG_INPUT,
+        padding=6
+    )
+    style.map("TCombobox",
+        fieldbackground=[("readonly", BG_INPUT), ("focus", BG_INPUT)],
+        foreground=[("readonly", TEXT_PRI), ("focus", TEXT_PRI)],
+        selectbackground=[("readonly", ACCENT)]
+    )
+
+
 class FlatButton(tk.Button):
     def __init__(self, parent, text="", command=None, accent=False, danger=False, **kw):
         self._accent = accent
@@ -173,6 +255,8 @@ class SheetSearchDialog(tk.Toplevel):
         self.geometry("680x540")
         self.minsize(550, 400)
         self.configure(bg=BG_DARK)
+
+        apply_dark_popup_style(self)
 
         self._sheets = sheets
         self._on_select = on_select_callback
@@ -624,6 +708,7 @@ class InterpresonaSimpleApp(tk.Tk):
         self._is_running = False
 
         self._setup_styles()
+        apply_dark_popup_style(self)
         self._build_ui()
         self._auto_detect_game_folder()
         self._show_step(1)
