@@ -462,10 +462,181 @@ class MockTranslator(BaseTranslator):
 
 
 # ---------------------------------------------------------------------------
+# Local LLM backend (Ollama, LM Studio, llama.cpp API)
+# ---------------------------------------------------------------------------
+
+class LocalLLMTranslator(BaseTranslator):
+    """
+    Local Large Language Model (LLM) backend (Ollama, LM Studio, llama.cpp).
+    Uses FFXIV Lore Knowledge Base, Sheet Context Injection, and OpenAI-compatible
+    Chat Completions endpoint to translate strings with high contextual accuracy.
+    """
+
+    name = "Local LLM (Ollama / LM Studio)"
+
+    def __init__(
+        self,
+        endpoint: str = "http://localhost:11434/v1",
+        model_name: str = "qwen2.5:7b",
+        source_lang: str = "en",
+        target_lang: str = "it",
+        temperature: float = 0.1,
+        delay_ms: int = 0,
+        sheet_name: str = "",
+        custom_glossary: Optional[dict[str, str]] = None,
+    ):
+        self._endpoint = endpoint.rstrip("/")
+        self._model = model_name or "qwen2.5:7b"
+        self._source = source_lang.lower()
+        self._target = target_lang.lower()
+        self._temperature = temperature
+        self._delay = max(0.0, delay_ms / 1000.0)
+        self._sheet_name = sheet_name
+        self._custom_glossary = custom_glossary or {}
+
+    def set_sheet_name(self, sheet_name: str):
+        """Update current active FFXIV sheet for context injection."""
+        self._sheet_name = sheet_name
+
+    def translate(self, texts: list[str]) -> list[str]:
+        results = []
+        import re
+        for i, text in enumerate(texts):
+            cleaned = re.sub(r"\{\d+\}", "", text).strip()
+            is_bypass = False
+            if not cleaned:
+                is_bypass = True
+            elif re.match(r"^[ \t\r\n.,;:!?'\"`~@#$%^&*()_+={}\[\]|\\<>\-※《》\/\\%0-9\ue000-\ue0ff]*$", cleaned):
+                is_bypass = True
+            elif cleaned.lower() in ("m", "h", "d", "s", "ms", "sec", "min", "hr", "day", "lv", "lv.", "xp", "hp", "mp", "gp", "cp"):
+                is_bypass = True
+            elif len(re.findall(r"[a-zA-Z]", cleaned)) < 3:
+                is_bypass = True
+            else:
+                cleaned_no_syms = re.sub(r"[ \t\r\n.,;:!?'\"`~@#$%^&*()_+={}\[\]|\\<>\-※《》\/\\%0-9\ue000-\ue0ff]", "", cleaned)
+                if cleaned_no_syms.isupper() and len(cleaned_no_syms) <= 5:
+                    is_bypass = True
+
+            if is_bypass:
+                results.append(text)
+            else:
+                results.append(self._translate_one(text))
+
+            try:
+                import tkinter as tk
+                root = tk._default_root
+                if root:
+                    root.update()
+            except Exception:
+                pass
+
+            if i < len(texts) - 1 and self._delay > 0:
+                time.sleep(self._delay)
+        return results
+
+    def _translate_one(self, text: str) -> str:
+        import re
+        from interpresona.core.lore_kb import build_system_prompt
+
+        mapping = {}
+        def repl(m):
+            tok = f"VAR{m.group(1)}"
+            mapping[tok] = f"{{{m.group(1)}}}"
+            return f" {tok} "
+
+        masked = re.sub(r"\{(\d+)\}\s*\'s", repl, text)
+        masked = re.sub(r"\{(\d+)\}", repl, masked)
+        masked_mt = re.sub(r"\[\s*(VAR\d+)\s*\]", r"(\1)", masked)
+        masked_clean = re.sub(r"\s+", " ", masked_mt).strip()
+
+        sys_prompt = build_system_prompt(self._custom_glossary, self._sheet_name)
+
+        for attempt in range(3):
+            try:
+                res_raw = self._raw_chat_request(sys_prompt, masked_clean)
+                res = re.sub(r"\s+", " ", res_raw).strip()
+                if res.startswith('"') and res.endswith('"') and len(res) > 2:
+                    res = res[1:-1].strip()
+                elif res.startswith('`') and res.endswith('`') and len(res) > 2:
+                    res = res[1:-1].strip()
+
+                for tok, orig in mapping.items():
+                    res = re.sub(r"\(" + re.escape(tok) + r"\)", orig, res, flags=re.IGNORECASE)
+                    res = re.sub(r"\[" + re.escape(tok) + r"\]", orig, res, flags=re.IGNORECASE)
+                    res = re.sub(r"\b" + re.escape(tok) + r"\b", orig, res, flags=re.IGNORECASE)
+                    if tok not in res and tok.lower() not in res.lower():
+                        res = re.sub(re.escape(tok), orig, res, flags=re.IGNORECASE)
+                return res
+            except Exception as exc:
+                if attempt == 2:
+                    return text
+                time.sleep(1.0 * (attempt + 1))
+        return text
+
+    def _raw_chat_request(self, system_prompt: str, user_text: str) -> str:
+        payload = {
+            "model": self._model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"Traduci in italiano mantenendo intatti i segnaposto tipo VAR0:\n{user_text}"}
+            ],
+            "temperature": self._temperature,
+            "stream": False
+        }
+
+        url = f"{self._endpoint}/chat/completions"
+        body = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=body,
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": "Interpresona-LLM/1.0"
+            },
+            method="POST",
+        )
+
+        import ssl
+        ctx = ssl._create_unverified_context()
+
+        try:
+            with urllib.request.urlopen(req, context=ctx, timeout=45) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                if "choices" in data and len(data["choices"]) > 0:
+                    content = data["choices"][0]["message"]["content"]
+                    return content.strip()
+                raise TranslationError("LLM response missing choices")
+        except Exception as exc:
+            raise TranslationError(f"Local LLM request failed: {exc}") from exc
+
+    @staticmethod
+    def get_available_models(endpoint: str = "http://localhost:11434/v1") -> list[str]:
+        """Query the local OpenAI-compatible endpoint for installed models."""
+        url = f"{endpoint.rstrip('/')}/models"
+        req = urllib.request.Request(
+            url,
+            headers={"User-Agent": "Interpresona-LLM/1.0"},
+            method="GET",
+        )
+        import ssl
+        ctx = ssl._create_unverified_context()
+        try:
+            with urllib.request.urlopen(req, context=ctx, timeout=5) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                if "data" in data and isinstance(data["data"], list):
+                    models = [m["id"] for m in data["data"] if "id" in m]
+                    return sorted(models)
+        except Exception:
+            pass
+        return ["qwen2.5:7b", "llama3.1:8b", "gemma2:9b", "mistral:7b"]
+
+
+# ---------------------------------------------------------------------------
 # Translator registry
 # ---------------------------------------------------------------------------
 
 BACKENDS: dict[str, type[BaseTranslator]] = {
+    "localllm": LocalLLMTranslator,
     "google": GoogleTranslator,
     "libretranslate": LibreTranslateTranslator,
     "deepl": DeepLTranslator,

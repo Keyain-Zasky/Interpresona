@@ -31,7 +31,7 @@ from interpresona.core.parser import EXHParser
 from interpresona.core.pipeline import TranslationPipeline
 from interpresona.core.masker import validate_placeholders
 from interpresona.core.translator import (
-    DeepLTranslator, LibreTranslateTranslator, GoogleTranslator, MockTranslator,
+    DeepLTranslator, LibreTranslateTranslator, GoogleTranslator, LocalLLMTranslator, MockTranslator,
     BaseTranslator, TranslationError,
 )
 
@@ -701,15 +701,18 @@ class InterpresonaSimpleApp(tk.Tk):
         self._session_records: list[dict] = []
 
         # Translator config
-        self._backend_var = tk.StringVar(value="google")
+        self._backend_var = tk.StringVar(value="localllm")
+        self._llm_endpoint_var = tk.StringVar(value="http://localhost:11434/v1")
+        self._llm_model_var = tk.StringVar(value="qwen2.5:7b")
+        self._llm_temp_var = tk.StringVar(value="0.1")
         self._libre_url_var = tk.StringVar(value="https://translate.systemofagamer.it")
         self._deepl_key_var = tk.StringVar()
         self._source_lang_var = tk.StringVar(value="en")
         self._target_lang_var = tk.StringVar(value="it")
 
         # Rate Limiting & Speed state
-        self._rate_limit_mode_var = tk.StringVar(value="limited")
-        self._delay_ms_var = tk.StringVar(value="500")
+        self._rate_limit_mode_var = tk.StringVar(value="unlimited")
+        self._delay_ms_var = tk.StringVar(value="0")
 
         # Output folder
         self._output_folder_var = tk.StringVar(value=str(Path.cwd() / "translated_output"))
@@ -1100,13 +1103,30 @@ class InterpresonaSimpleApp(tk.Tk):
         b_frame.pack(fill="x", pady=4)
         tk.Label(b_frame, text="Motore Traduzione:", bg=BG_CARD, fg=TEXT_PRI, font=FONT_SUB).pack(side="left", padx=(0, 10))
 
-        cmb = ttk.Combobox(b_frame, textvariable=self._backend_var, values=["google", "libretranslate", "deepl", "mock"], state="readonly", width=26)
+        cmb = ttk.Combobox(b_frame, textvariable=self._backend_var, values=["localllm", "google", "libretranslate", "deepl", "mock"], state="readonly", width=28)
         cmb.pack(side="left")
         cmb.bind("<<ComboboxSelected>>", lambda e: self._update_step2_backend())
 
         # Config Panel Frame
         self._cfg_panel = tk.Frame(card, bg=BG_MID, padx=16, pady=14, bd=1, highlightbackground=BORDER, highlightthickness=1)
         self._cfg_panel.pack(fill="x", pady=10)
+
+        # Local LLM Fields (Ollama / LM Studio)
+        self._llm_frame = tk.Frame(self._cfg_panel, bg=BG_MID)
+        tk.Label(self._llm_frame, text="🧠 Modello IA Locale (Ollama / LM Studio / llama.cpp)", bg=BG_MID, fg=ACCENT_LIGHT, font=FONT_SUB).pack(anchor="w")
+        tk.Label(self._llm_frame, text="💡 Inietta la Knowledge Base FFXIV (Scagli dell'Alba, Etere, Primordiali...) ed il contesto del foglio.", bg=BG_MID, fg=TEXT_SEC, font=FONT_SMALL).pack(anchor="w", pady=(2, 6))
+
+        url_f = tk.Frame(self._llm_frame, bg=BG_MID)
+        url_f.pack(fill="x", pady=2)
+        tk.Label(url_f, text="Endpoint Server URL:", bg=BG_MID, fg=TEXT_PRI, font=FONT_BODY).pack(side="left", padx=(0, 6))
+        self._create_entry(url_f, variable=self._llm_endpoint_var).pack(side="left", fill="x", expand=True)
+
+        mod_f = tk.Frame(self._llm_frame, bg=BG_MID)
+        mod_f.pack(fill="x", pady=4)
+        tk.Label(mod_f, text="Nome Modello IA:", bg=BG_MID, fg=TEXT_PRI, font=FONT_BODY).pack(side="left", padx=(0, 6))
+        self._llm_model_cmb = ttk.Combobox(mod_f, textvariable=self._llm_model_var, values=["qwen2.5:7b", "llama3.1:8b", "gemma2:9b", "mistral:7b"], width=22)
+        self._llm_model_cmb.pack(side="left", padx=(0, 6))
+        FlatButton(mod_f, text="🔍 Rileva Modelli Locali", command=self._detect_local_llm_models).pack(side="left")
 
         # Google Translate Fields
         self._google_frame = tk.Frame(self._cfg_panel, bg=BG_MID)
@@ -1167,17 +1187,32 @@ class InterpresonaSimpleApp(tk.Tk):
         self._update_step2_backend()
         return card
 
+    def _detect_local_llm_models(self):
+        endpoint = self._llm_endpoint_var.get().strip()
+        models = LocalLLMTranslator.get_available_models(endpoint)
+        if models:
+            self._llm_model_cmb.config(values=models)
+            if self._llm_model_var.get() not in models:
+                self._llm_model_var.set(models[0])
+            messagebox.showinfo("Modelli Rilevati", f"Trovati {len(models)} modelli nel server locale ({endpoint}):\n\n" + "\n".join(models[:10]))
+        else:
+            messagebox.showwarning("Nessun Modello Rilevato", f"Impossibile contattare il server LLM su {endpoint}.\nAssicurati che Ollama o LM Studio sia avviato.")
+
     def _set_delay_preset(self, mode: str, delay_ms: int):
         self._rate_limit_mode_var.set(mode)
         self._delay_ms_var.set(str(delay_ms))
 
     def _update_step2_backend(self):
         b = self._backend_var.get()
+        self._llm_frame.pack_forget()
         self._google_frame.pack_forget()
         self._libre_frame.pack_forget()
         self._deepl_frame.pack_forget()
 
-        if b == "google":
+        if b == "localllm":
+            self._llm_frame.pack(fill="x", before=self._cfg_panel.winfo_children()[-1])
+            self._set_delay_preset("unlimited", 0)
+        elif b == "google":
             self._google_frame.pack(fill="x", before=self._cfg_panel.winfo_children()[-1])
             self._set_delay_preset("limited", 500)
         elif b == "libretranslate":
@@ -1194,6 +1229,8 @@ class InterpresonaSimpleApp(tk.Tk):
         self.update()
 
         b = self._backend_var.get()
+        endpoint = self._llm_endpoint_var.get()
+        model = self._llm_model_var.get()
         url = self._libre_url_var.get()
         key = self._deepl_key_var.get()
         src = self._source_lang_var.get()
@@ -1203,14 +1240,16 @@ class InterpresonaSimpleApp(tk.Tk):
         except ValueError:
             delay_ms = 0
 
-        def do_test(b_val, url_val, key_val, src_val, tgt_val, delay_val):
+        def do_test():
             try:
-                if b_val == "google":
-                    t = GoogleTranslator(source_lang=src_val, target_lang=tgt_val, delay_ms=delay_val)
-                elif b_val == "libretranslate":
-                    t = LibreTranslateTranslator(url=url_val, source_lang=src_val, target_lang=tgt_val, delay_ms=delay_val)
-                elif b_val == "deepl":
-                    t = DeepLTranslator(api_key=key_val, source_lang=src_val, target_lang=tgt_val, delay_ms=delay_val)
+                if b == "localllm":
+                    t = LocalLLMTranslator(endpoint=endpoint, model_name=model, source_lang=src, target_lang=tgt, delay_ms=delay_ms, sheet_name="Addon")
+                elif b == "google":
+                    t = GoogleTranslator(source_lang=src, target_lang=tgt, delay_ms=delay_ms)
+                elif b == "libretranslate":
+                    t = LibreTranslateTranslator(url=url, source_lang=src, target_lang=tgt, delay_ms=delay_ms)
+                elif b == "deepl":
+                    t = DeepLTranslator(api_key=key, source_lang=src, target_lang=tgt, delay_ms=delay_ms)
                 else:
                     t = MockTranslator()
 
@@ -1223,7 +1262,7 @@ class InterpresonaSimpleApp(tk.Tk):
                 err_msg = str(exc)[:60]
                 self.after(0, lambda: self._test_result_lbl.config(text=f"✖ Errore: {err_msg}", fg=ERROR_COL))
 
-        threading.Thread(target=do_test, args=(b, url, key, src, tgt, delay_ms), daemon=True).start()
+        threading.Thread(target=do_test, daemon=True).start()
 
     # ------------------------------------------------------------------
     # Step 3: Destination Card
@@ -1626,6 +1665,9 @@ class InterpresonaSimpleApp(tk.Tk):
             if self._is_cancelled:
                 self._log("Esecuzione interrotta dall'utente.", "warning")
                 break
+
+            if hasattr(translator, "set_sheet_name"):
+                translator.set_sheet_name(sheet_name)
 
             self.after(0, lambda i=idx, tot=total_sheets, name=sheet_name: [
                 self._progress_bar.config(value=int(i / tot * 100)),
