@@ -31,7 +31,7 @@ from interpresona.core.parser import EXHParser
 from interpresona.core.pipeline import TranslationPipeline
 from interpresona.core.masker import validate_placeholders
 from interpresona.core.translator import (
-    DeepLTranslator, LibreTranslateTranslator, MockTranslator,
+    DeepLTranslator, LibreTranslateTranslator, GoogleTranslator, MockTranslator,
     BaseTranslator, TranslationError,
 )
 
@@ -701,11 +701,15 @@ class InterpresonaSimpleApp(tk.Tk):
         self._session_records: list[dict] = []
 
         # Translator config
-        self._backend_var = tk.StringVar(value="libretranslate")
+        self._backend_var = tk.StringVar(value="google")
         self._libre_url_var = tk.StringVar(value="https://translate.systemofagamer.it")
         self._deepl_key_var = tk.StringVar()
         self._source_lang_var = tk.StringVar(value="en")
         self._target_lang_var = tk.StringVar(value="it")
+
+        # Rate Limiting & Speed state
+        self._rate_limit_mode_var = tk.StringVar(value="limited")
+        self._delay_ms_var = tk.StringVar(value="500")
 
         # Output folder
         self._output_folder_var = tk.StringVar(value=str(Path.cwd() / "translated_output"))
@@ -1082,39 +1086,47 @@ class InterpresonaSimpleApp(tk.Tk):
     # ------------------------------------------------------------------
     # Step 2: Translation Service Setup Card
     # ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Step 2: Translation Service Setup Card
+    # ------------------------------------------------------------------
     def _build_step2_card(self) -> tk.Frame:
         card = tk.Frame(self._card_container, bg=BG_CARD, padx=20, pady=20, bd=1, highlightbackground=BORDER, highlightthickness=1)
 
         tk.Label(card, text="Passo 2: Configura il servizio di Traduzione", bg=BG_CARD, fg=ACCENT_LIGHT, font=FONT_HEAD).pack(anchor="w", pady=(0, 4))
-        tk.Label(card, text="Scegli il motore di traduzione e verifica che la connessione sia attiva:", bg=BG_CARD, fg=TEXT_SEC, font=FONT_BODY).pack(anchor="w", pady=(0, 16))
+        tk.Label(card, text="Scegli il motore di traduzione, i limiti di velocità ed effettua un test di connessione:", bg=BG_CARD, fg=TEXT_SEC, font=FONT_BODY).pack(anchor="w", pady=(0, 14))
 
         # Backend Selector
         b_frame = tk.Frame(card, bg=BG_CARD)
-        b_frame.pack(fill="x", pady=6)
+        b_frame.pack(fill="x", pady=4)
         tk.Label(b_frame, text="Motore Traduzione:", bg=BG_CARD, fg=TEXT_PRI, font=FONT_SUB).pack(side="left", padx=(0, 10))
 
-        cmb = ttk.Combobox(b_frame, textvariable=self._backend_var, values=["libretranslate", "deepl", "mock"], state="readonly", width=22)
+        cmb = ttk.Combobox(b_frame, textvariable=self._backend_var, values=["google", "libretranslate", "deepl", "mock"], state="readonly", width=26)
         cmb.pack(side="left")
         cmb.bind("<<ComboboxSelected>>", lambda e: self._update_step2_backend())
 
         # Config Panel Frame
-        self._cfg_panel = tk.Frame(card, bg=BG_MID, padx=16, pady=16, bd=1, highlightbackground=BORDER, highlightthickness=1)
-        self._cfg_panel.pack(fill="x", pady=14)
+        self._cfg_panel = tk.Frame(card, bg=BG_MID, padx=16, pady=14, bd=1, highlightbackground=BORDER, highlightthickness=1)
+        self._cfg_panel.pack(fill="x", pady=10)
+
+        # Google Translate Fields
+        self._google_frame = tk.Frame(self._cfg_panel, bg=BG_MID)
+        tk.Label(self._google_frame, text="🌐 Google Translate (API Web Gratuita Online)", bg=BG_MID, fg=ACCENT_LIGHT, font=FONT_SUB).pack(anchor="w")
+        tk.Label(self._google_frame, text="💡 Non richiede API Key. Utilizza il preset Anti-Blocco per evitare limitazioni di frequenza IP (429 Too Many Requests).", bg=BG_MID, fg=TEXT_SEC, font=FONT_SMALL).pack(anchor="w", pady=(2, 0))
 
         # LibreTranslate Fields
         self._libre_frame = tk.Frame(self._cfg_panel, bg=BG_MID)
         tk.Label(self._libre_frame, text="URL Server LibreTranslate:", bg=BG_MID, fg=TEXT_PRI, font=FONT_BODY).pack(anchor="w")
-        self._create_entry(self._libre_frame, variable=self._libre_url_var).pack(fill="x", pady=(4, 8))
+        self._create_entry(self._libre_frame, variable=self._libre_url_var).pack(fill="x", pady=(4, 6))
         tk.Label(self._libre_frame, text="Endpoint predefinito impostato su https://translate.systemofagamer.it", bg=BG_MID, fg=TEXT_DIM, font=FONT_SMALL).pack(anchor="w")
 
         # DeepL Fields
         self._deepl_frame = tk.Frame(self._cfg_panel, bg=BG_MID)
         tk.Label(self._deepl_frame, text="Chiave API DeepL (Authentication Key):", bg=BG_MID, fg=TEXT_PRI, font=FONT_BODY).pack(anchor="w")
-        self._create_entry(self._deepl_frame, variable=self._deepl_key_var).pack(fill="x", pady=(4, 8))
+        self._create_entry(self._deepl_frame, variable=self._deepl_key_var).pack(fill="x", pady=(4, 6))
 
         # Language selection
         lang_frame = tk.Frame(self._cfg_panel, bg=BG_MID)
-        lang_frame.pack(fill="x", pady=(12, 0))
+        lang_frame.pack(fill="x", pady=(10, 0))
 
         tk.Label(lang_frame, text="Da Lingua:", bg=BG_MID, fg=TEXT_SEC, font=FONT_BODY).pack(side="left", padx=(0, 6))
         self._create_entry(lang_frame, variable=self._source_lang_var, width=6).pack(side="left", padx=(0, 20))
@@ -1122,9 +1134,31 @@ class InterpresonaSimpleApp(tk.Tk):
         tk.Label(lang_frame, text="A Lingua:", bg=BG_MID, fg=TEXT_SEC, font=FONT_BODY).pack(side="left", padx=(0, 6))
         self._create_entry(lang_frame, variable=self._target_lang_var, width=6).pack(side="left")
 
+        # Rate Limiting Sub-Panel
+        rl_panel = tk.Frame(card, bg=BG_MID, padx=16, pady=12, bd=1, highlightbackground=BORDER, highlightthickness=1)
+        rl_panel.pack(fill="x", pady=(8, 10))
+
+        tk.Label(rl_panel, text="⚡ Limiti di Velocità & Protezione Anti-Blocco (Rate Limiting)", bg=BG_MID, fg=ACCENT_LIGHT, font=FONT_SUB).pack(anchor="w", pady=(0, 2))
+        tk.Label(rl_panel, text="Seleziona un preset di ritardo per prevenire blocchi o disattivalo per server illimitati:", bg=BG_MID, fg=TEXT_SEC, font=FONT_SMALL).pack(anchor="w", pady=(0, 8))
+
+        btn_row = tk.Frame(rl_panel, bg=BG_MID)
+        btn_row.pack(fill="x", pady=(0, 8))
+
+        FlatButton(btn_row, text="🚀 Senza Limiti (Max Speed)", command=lambda: self._set_delay_preset("unlimited", 0)).pack(side="left", padx=2)
+        FlatButton(btn_row, text="🛡️ Preset Google Free (500 ms)", command=lambda: self._set_delay_preset("limited", 500), accent=True).pack(side="left", padx=2)
+        FlatButton(btn_row, text="⚡ Preset LibreTranslate (200 ms)", command=lambda: self._set_delay_preset("limited", 200)).pack(side="left", padx=2)
+
+        delay_row = tk.Frame(rl_panel, bg=BG_MID)
+        delay_row.pack(fill="x", pady=(4, 0))
+
+        tk.Label(delay_row, text="Ritardo attivo tra richieste:", bg=BG_MID, fg=TEXT_PRI, font=FONT_BODY).pack(side="left", padx=(0, 8))
+        self._delay_entry = self._create_entry(delay_row, variable=self._delay_ms_var, width=8)
+        self._delay_entry.pack(side="left", padx=(0, 6))
+        tk.Label(delay_row, text="ms (0 = Nessun Limite / Massima Velocità)", bg=BG_MID, fg=TEXT_DIM, font=FONT_SMALL).pack(side="left")
+
         # Test Connection Button
         test_frame = tk.Frame(card, bg=BG_CARD)
-        test_frame.pack(fill="x", pady=10)
+        test_frame.pack(fill="x", pady=6)
 
         FlatButton(test_frame, text="⚡ Testa Connessione Servizio", command=self._test_connection).pack(side="left")
         self._test_result_lbl = tk.Label(test_frame, text="", bg=BG_CARD, font=FONT_SUB)
@@ -1133,15 +1167,27 @@ class InterpresonaSimpleApp(tk.Tk):
         self._update_step2_backend()
         return card
 
+    def _set_delay_preset(self, mode: str, delay_ms: int):
+        self._rate_limit_mode_var.set(mode)
+        self._delay_ms_var.set(str(delay_ms))
+
     def _update_step2_backend(self):
         b = self._backend_var.get()
+        self._google_frame.pack_forget()
         self._libre_frame.pack_forget()
         self._deepl_frame.pack_forget()
 
-        if b == "libretranslate":
+        if b == "google":
+            self._google_frame.pack(fill="x", before=self._cfg_panel.winfo_children()[-1])
+            self._set_delay_preset("limited", 500)
+        elif b == "libretranslate":
             self._libre_frame.pack(fill="x", before=self._cfg_panel.winfo_children()[-1])
+            self._set_delay_preset("limited", 200)
         elif b == "deepl":
             self._deepl_frame.pack(fill="x", before=self._cfg_panel.winfo_children()[-1])
+            self._set_delay_preset("unlimited", 0)
+        elif b == "mock":
+            self._set_delay_preset("unlimited", 0)
 
     def _test_connection(self):
         self._test_result_lbl.config(text="Verifica in corso...", fg=WARNING)
@@ -1152,26 +1198,32 @@ class InterpresonaSimpleApp(tk.Tk):
         key = self._deepl_key_var.get()
         src = self._source_lang_var.get()
         tgt = self._target_lang_var.get()
+        try:
+            delay_ms = int(self._delay_ms_var.get().strip())
+        except ValueError:
+            delay_ms = 0
 
-        def do_test(b_val, url_val, key_val, src_val, tgt_val):
+        def do_test(b_val, url_val, key_val, src_val, tgt_val, delay_val):
             try:
-                if b_val == "libretranslate":
-                    t = LibreTranslateTranslator(url=url_val, source_lang=src_val, target_lang=tgt_val)
+                if b_val == "google":
+                    t = GoogleTranslator(source_lang=src_val, target_lang=tgt_val, delay_ms=delay_val)
+                elif b_val == "libretranslate":
+                    t = LibreTranslateTranslator(url=url_val, source_lang=src_val, target_lang=tgt_val, delay_ms=delay_val)
                 elif b_val == "deepl":
-                    t = DeepLTranslator(api_key=key_val, source_lang=src_val, target_lang=tgt_val)
+                    t = DeepLTranslator(api_key=key_val, source_lang=src_val, target_lang=tgt_val, delay_ms=delay_val)
                 else:
                     t = MockTranslator()
 
                 res = t.translate(["Hello {0} world"])
                 if res and res[0]:
-                    self.after(0, lambda: self._test_result_lbl.config(text="✓ Connessione Riuscita!", fg=SUCCESS))
+                    self.after(0, lambda: self._test_result_lbl.config(text=f"✓ Connessione Riuscita! [{t.name}]", fg=SUCCESS))
                 else:
                     self.after(0, lambda: self._test_result_lbl.config(text="⚠ Nessun testo restituito", fg=WARNING))
             except Exception as exc:
                 err_msg = str(exc)[:60]
                 self.after(0, lambda: self._test_result_lbl.config(text=f"✖ Errore: {err_msg}", fg=ERROR_COL))
 
-        threading.Thread(target=do_test, args=(b, url, key, src, tgt), daemon=True).start()
+        threading.Thread(target=do_test, args=(b, url, key, src, tgt, delay_ms), daemon=True).start()
 
     # ------------------------------------------------------------------
     # Step 3: Destination Card
@@ -1479,13 +1531,19 @@ class InterpresonaSimpleApp(tk.Tk):
         b = self._backend_var.get()
         src = self._source_lang_var.get().strip() or "en"
         tgt = self._target_lang_var.get().strip() or "it"
+        try:
+            delay_ms = int(self._delay_ms_var.get().strip())
+        except ValueError:
+            delay_ms = 0
 
-        if b == "libretranslate":
+        if b == "google":
+            return GoogleTranslator(source_lang=src, target_lang=tgt, delay_ms=delay_ms)
+        elif b == "libretranslate":
             url = self._libre_url_var.get().strip() or "https://translate.systemofagamer.it"
-            return LibreTranslateTranslator(url=url, source_lang=src, target_lang=tgt)
+            return LibreTranslateTranslator(url=url, source_lang=src, target_lang=tgt, delay_ms=delay_ms)
         elif b == "deepl":
             key = self._deepl_key_var.get().strip()
-            return DeepLTranslator(api_key=key, source_lang=src, target_lang=tgt)
+            return DeepLTranslator(api_key=key, source_lang=src, target_lang=tgt, delay_ms=delay_ms)
         else:
             return MockTranslator()
 

@@ -1,14 +1,18 @@
-# Interpresona — FFXIV Dialogue & Interface Text Translation Studio (v1.9.28)
+# Interpresona — FFXIV Dialogue & Interface Text Translation Studio (v1.9.29)
 
 Interpresona is a premium, high-performance desktop application designed for extracting, translating, inspecting, and injecting Final Fantasy XIV (FFXIV) game sheets (`.exh` / `.exd` binary formats). Built entirely from scratch in Python with zero external execution dependencies, it guarantees absolute data preservation while maintaining FFXIV control codes, variables, and color formatting tags.
 
 ---
 
-## 🌟 Key Features & Latest Enhancements (v1.9.28)
+## 🌟 Key Features & Latest Enhancements (v1.9.29)
+
+- **Google Translate (Free API) Backend & Rate Limiting System**:
+  - **Google Translate Gratuito**: Built-in support for Google Translate free online API with zero API key required and placeholder variable protection (`{0}`, `{1}`).
+  - **Limiti di Velocità & Preset Anti-Blocco (Rate Limiting)**: Switch between **🚀 Senza Limiti (Max Speed / 0 ms)** for local servers or DeepL Pro, and **🛡️ Preset Anti-Blocco (500 ms / 200 ms / Custom)** for free online APIs to avoid HTTP 429 rate limit blocks.
 
 - **Simplified Step-by-Step Guided Wizard GUI (`simple_gui.py`)**:
-  - **Step 1: Data Source Selection**: Live auto-detection of FFXIV SqPack game directory, extracted `.exh`/`.exd` folder, or single file pair. Includes the new **Searchable Sheet Selector Dialog (`SheetSearchDialog`)** to quickly search and filter any game sheet by name (e.g. `Addon`, `Item`, `Quest`, `Action`, `Status`).
-  - **Step 2: Translator Configuration**: Configure LibreTranslate (local/private server) or DeepL API engines with instant connection diagnostic tests.
+  - **Step 1: Data Source Selection**: Live auto-detection of FFXIV SqPack game directory, extracted `.exh`/`.exd` folder, or single file pair. Includes the **Searchable Sheet Selector Dialog (`SheetSearchDialog`)** to quickly search and filter any game sheet by name (e.g. `Addon`, `Item`, `Quest`, `Action`, `Status`).
+  - **Step 2: Translator Configuration**: Configure Google Translate (Free API), LibreTranslate (local/private server), or DeepL API engines with instant connection diagnostic tests and Rate Limit presets.
   - **Step 3: Destination Output**: Set target output folder with real-time path validation.
   - **Step 4: Execution & Event Terminal**: Real-time progress tracking bar, terminal console log, and direct access to string inspection.
 
@@ -37,7 +41,7 @@ graph TD
     B --> C["SeString Masker"]
     C --> D["Translatable Dialogue List"]
     D --> E["String Inspector & Pre-Translation Editor"]
-    E --> F["Machine Translation (LibreTranslate / DeepL)"]
+    E --> F["Machine Translation (Google / LibreTranslate / DeepL)"]
     F --> G["SeString Unmasker & Safety Validator"]
     G --> H["EXD Injector"]
     H --> I["Translated EXD & EXH Output"]
@@ -53,7 +57,7 @@ Interpresona/
 ├── README.md                     # Comprehensive project documentation
 ├── LICENSE                       # MIT Open Source License
 └── interpresona/
-    ├── __init__.py               # Package metadata & version info (v1.9.28)
+    ├── __init__.py               # Package metadata & version info (v1.9.29)
     ├── simple_gui.py             # Streamlined Step-by-Step Wizard & Pop-up Suite
     ├── gui.py                    # Legacy tabbed GUI mode
     ├── core/

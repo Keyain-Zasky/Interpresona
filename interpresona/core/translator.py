@@ -76,11 +76,13 @@ class DeepLTranslator(BaseTranslator):
         target_lang: str = "EN-GB",
         source_lang: Optional[str] = None,
         formality: str = "default",
+        delay_ms: int = 0,
     ):
         self._api_key = api_key.strip()
         self._target = target_lang.upper()
         self._source = source_lang.upper() if source_lang else None
         self._formality = formality
+        self._delay = max(0.0, delay_ms / 1000.0)
         # Choose endpoint based on key suffix
         if self._api_key.endswith(":fx"):
             self._endpoint = "https://api-free.deepl.com/v2/translate"
@@ -107,6 +109,8 @@ class DeepLTranslator(BaseTranslator):
             for i in range(0, len(pending_batch), self.BATCH_SIZE):
                 batch = pending_batch[i: i + self.BATCH_SIZE]
                 translated_results.extend(self._translate_batch(batch))
+                if i + self.BATCH_SIZE < len(pending_batch) and self._delay > 0:
+                    time.sleep(self._delay)
             for idx, trans in zip(pending_indices, translated_results):
                 results[idx] = trans
                 
@@ -283,7 +287,9 @@ class LibreTranslateTranslator(BaseTranslator):
             with urllib.request.urlopen(req_post, context=ctx, timeout=15) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 return data["translatedText"]
-        except Exception as exc:
+        except urllib.error.HTTPError as exc:
+            if exc.code in (429, 503):
+                time.sleep(1.5)
             # Fallback to Mode 2: GET URL Mode
             query = urllib.parse.urlencode({
                 "text": text,
@@ -302,6 +308,124 @@ class LibreTranslateTranslator(BaseTranslator):
                     return resp.read().decode("utf-8").strip()
             except Exception as get_exc:
                 raise TranslationError(f"LibreTranslate GET fallback failed: {get_exc}") from get_exc
+        except Exception as exc:
+            raise TranslationError(f"LibreTranslate request failed: {exc}") from exc
+
+
+# ---------------------------------------------------------------------------
+# Google Translate (Free Web API) backend
+# ---------------------------------------------------------------------------
+
+class GoogleTranslator(BaseTranslator):
+    """
+    Google Translate (Free Web API) backend.
+    Translates text sequentially with configurable delay and automatic retry
+    backoff to prevent HTTP 429 rate-limiting on free public requests.
+    """
+
+    name = "Google Translate (Gratuito)"
+
+    def __init__(
+        self,
+        source_lang: str = "en",
+        target_lang: str = "it",
+        delay_ms: int = 500,
+    ):
+        self._source = source_lang.lower()
+        self._target = target_lang.lower()
+        self._delay = max(0.0, delay_ms / 1000.0)
+
+    def translate(self, texts: list[str]) -> list[str]:
+        results = []
+        import re
+        for i, text in enumerate(texts):
+            cleaned = re.sub(r"\{\d+\}", "", text).strip()
+            is_bypass = False
+            if not cleaned:
+                is_bypass = True
+            elif re.match(r"^[ \t\r\n.,;:!?'\"`~@#$%^&*()_+={}\[\]|\\<>\-※《》\/\\%0-9\ue000-\ue0ff]*$", cleaned):
+                is_bypass = True
+            elif cleaned.lower() in ("m", "h", "d", "s", "ms", "sec", "min", "hr", "day", "lv", "lv.", "xp", "hp", "mp", "gp", "cp"):
+                is_bypass = True
+            elif len(re.findall(r"[a-zA-Z]", cleaned)) < 3:
+                is_bypass = True
+            else:
+                cleaned_no_syms = re.sub(r"[ \t\r\n.,;:!?'\"`~@#$%^&*()_+={}\[\]|\\<>\-※《》\/\\%0-9\ue000-\ue0ff]", "", cleaned)
+                if cleaned_no_syms.isupper() and len(cleaned_no_syms) <= 5:
+                    is_bypass = True
+
+            if is_bypass:
+                results.append(text)
+            else:
+                results.append(self._translate_one(text))
+
+            try:
+                import tkinter as tk
+                root = tk._default_root
+                if root:
+                    root.update()
+            except Exception:
+                pass
+
+            if i < len(texts) - 1 and self._delay > 0:
+                time.sleep(self._delay)
+        return results
+
+    def _translate_one(self, text: str) -> str:
+        import re
+        mapping = {}
+        def repl(m):
+            tok = f"VAR{m.group(1)}"
+            mapping[tok] = f"{{{m.group(1)}}}"
+            return f" {tok} "
+
+        masked = re.sub(r"\{(\d+)\}\s*\'s", repl, text)
+        masked = re.sub(r"\{(\d+)\}", repl, masked)
+
+        masked_mt = re.sub(r"\[\s*(VAR\d+)\s*\]", r"(\1)", masked)
+        masked_clean = re.sub(r"\s+", " ", masked_mt).strip()
+
+        for attempt in range(4):
+            try:
+                res_raw = self._raw_translate_request(masked_clean)
+                res = re.sub(r"\s+", " ", res_raw).strip()
+                for tok, orig in mapping.items():
+                    res = re.sub(r"\(" + re.escape(tok) + r"\)", orig, res, flags=re.IGNORECASE)
+                    res = re.sub(r"\[" + re.escape(tok) + r"\]", orig, res, flags=re.IGNORECASE)
+                    res = re.sub(r"\b" + re.escape(tok) + r"\b", orig, res, flags=re.IGNORECASE)
+                    if tok not in res and tok.lower() not in res.lower():
+                        res = re.sub(re.escape(tok), orig, res, flags=re.IGNORECASE)
+                return res
+            except Exception as exc:
+                if attempt == 3:
+                    return text
+                time.sleep(1.5 * (attempt + 1))
+        return text
+
+    def _raw_translate_request(self, text: str) -> str:
+        url = f"https://translate.googleapis.com/translate_a/single?client=gtx&sl={self._source}&tl={self._target}&dt=t&q=" + urllib.parse.quote(text)
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            },
+            method="GET",
+        )
+        import ssl
+        ctx = ssl._create_unverified_context()
+
+        try:
+            with urllib.request.urlopen(req, context=ctx, timeout=12) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                if data and data[0]:
+                    return "".join([item[0] for item in data[0] if item and item[0]])
+                return text
+        except urllib.error.HTTPError as exc:
+            if exc.code in (429, 503):
+                time.sleep(2.0)
+            raise TranslationError(f"Google Translate HTTP {exc.code}") from exc
+        except Exception as exc:
+            raise TranslationError(f"Google Translate request failed: {exc}") from exc
 
 
 # ---------------------------------------------------------------------------
@@ -342,7 +466,8 @@ class MockTranslator(BaseTranslator):
 # ---------------------------------------------------------------------------
 
 BACKENDS: dict[str, type[BaseTranslator]] = {
-    "deepl": DeepLTranslator,
+    "google": GoogleTranslator,
     "libretranslate": LibreTranslateTranslator,
+    "deepl": DeepLTranslator,
     "mock": MockTranslator,
 }
