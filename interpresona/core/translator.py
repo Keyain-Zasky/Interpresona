@@ -549,7 +549,11 @@ class LocalLLMTranslator(BaseTranslator):
         masked_mt = re.sub(r"\[\s*(VAR\d+)\s*\]", r"(\1)", masked)
         masked_clean = re.sub(r"\s+", " ", masked_mt).strip()
 
-        sys_prompt = build_system_prompt(self._custom_glossary, self._sheet_name)
+        sys_prompt = build_system_prompt(
+            custom_glossary=self._custom_glossary,
+            sheet_name=self._sheet_name,
+            text=masked_clean,
+        )
 
         for attempt in range(3):
             try:

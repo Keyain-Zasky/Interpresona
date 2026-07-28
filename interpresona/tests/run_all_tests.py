@@ -22,6 +22,7 @@ from interpresona.core.pipeline import TranslationPipeline, ExtractionRecord
 from interpresona.core.injector import EXDInjector
 from interpresona.core.translator import MockTranslator, TranslationError
 from interpresona.core.session import save_session, load_session, session_summary
+from interpresona.core.lore_kb import build_system_prompt, get_active_glossary, get_sheet_context_description
 
 PASS = 0
 FAIL = 0
@@ -585,10 +586,144 @@ def test_full_workflow_no_external_tools():
     print("    => Full standalone workflow verified, 0 external dependencies")
 
 
+def test_lore_kb_integration():
+    active_glossary = get_active_glossary()
+    assert "Scions of the Seventh Dawn" in active_glossary
+    assert active_glossary["Scions of the Seventh Dawn"] == "Eredi della Settima Alba"
+    assert len(active_glossary) >= 180
+    prompt = build_system_prompt(sheet_name="Quest")
+    assert "Eredi della Settima Alba" in prompt
+    assert "Quest" in prompt
+
+
+def test_story_dossier_and_raids_expansion():
+    from interpresona.core.lore_kb import (
+        get_story_summaries,
+        get_character_dossiers,
+        get_8man_raids,
+        get_24man_raids,
+        get_patch_storylines,
+    )
+    summaries = get_story_summaries()
+    assert len(summaries) == 6
+    assert "ARR" in summaries and "DT" in summaries
+
+    characters = get_character_dossiers()
+    assert len(characters) >= 35
+    assert "speech_register" in characters["Alphinaud"]
+    assert "italian_translation_guidance" in characters["Alphinaud"]
+
+    raids_8 = get_8man_raids()
+    assert len(raids_8) == 6
+    assert "Arcadion" in raids_8
+
+    raids_24 = get_24man_raids()
+    assert len(raids_24) == 5
+    assert "Myths of the Realm" in raids_24
+
+    patches = get_patch_storylines()
+    assert len(patches) >= 6
+
+
+def test_job_lore_dataset_integration():
+    from interpresona.core.lore_kb import load_job_lore, get_job_lore
+    jobs = load_job_lore().get("jobs", {})
+    assert len(jobs) == 33
+    pld = get_job_lore("PLD")
+    assert pld["name_it"] == "Paladino"
+    crp = get_job_lore("CRP")
+    assert crp["role_category"] == "Discepolo della Mano"
+
+
+def test_factions_lore_dataset_integration():
+    from interpresona.core.lore_kb import load_factions_lore, get_factions_lore
+    factions = load_factions_lore()
+    assert "garlean_empire" in factions
+    assert "ascian_overlords" in factions
+    assert "allagan_empire" in factions
+    assert "eorzean_alliance" in factions
+    assert "tribal_nations" in factions
+    tribes = get_factions_lore("tribal_nations")
+    assert len(tribes) == 16
+    assert "Sylphs" in tribes
+    assert "speech_quirks" in tribes["Sylphs"]
+
+
+def test_contextual_lore_scavenger_engine():
+    from interpresona.core.lore_kb import scavenge_lore_context, build_system_prompt
+
+    res1 = scavenge_lore_context("Emet-Selch and the Crystal Tower in Alexander", sheet_name="Quest_01")
+    assert "Emet-Selch" in res1["relevant_characters"]
+    assert "Crystal Tower" in res1["matched_glossary"]
+    assert "Alexander" in res1["relevant_stories"]
+
+    res2 = scavenge_lore_context("The PLD protected the WHM during the trial", sheet_name="Action_01")
+    assert "PLD" in res2["relevant_jobs"]
+    assert "WHM" in res2["relevant_jobs"]
+
+    res3 = scavenge_lore_context("These ones ask the Warrior of Light for aid.", sheet_name="Quest_01")
+    assert "tribal_nations:Sylphs" in res3["relevant_factions"]
+
+    prompt = build_system_prompt(sheet_name="Quest_01", text="Emet-Selch and the Crystal Tower")
+    assert "CONTESTO LORE SPECIFICO PER QUESTA TRADUZIONE" in prompt
+    assert "Emet-Selch" in prompt
+
+
+def test_scavenge_lore_harness_20_sentences():
+    import unittest
+    from interpresona.tests.test_scavenge_harness import TestScavengeLoreContextHarness
+    suite = unittest.TestLoader().loadTestsFromTestCase(TestScavengeLoreContextHarness)
+    buf = io.StringIO()
+    result = unittest.TextTestRunner(stream=buf).run(suite)
+    assert result.wasSuccessful(), f"Scavenge harness failed: {result.failures + result.errors}"
+
+
+def test_scavenge_adversarial_findings():
+    import unittest
+    from interpresona.tests.test_scavenge_harness import TestScavengeAdversarialFindings
+    suite = unittest.TestLoader().loadTestsFromTestCase(TestScavengeAdversarialFindings)
+    buf = io.StringIO()
+    result = unittest.TextTestRunner(stream=buf).run(suite)
+    assert result.wasSuccessful(), f"Adversarial findings failed: {result.failures + result.errors}"
+
+
+def test_local_llm_translator_lore_scavenging():
+    from unittest.mock import patch
+    from interpresona.core.translator import LocalLLMTranslator
+
+    translator = LocalLLMTranslator(sheet_name="Quest_01")
+    captured_prompts = []
+
+    def fake_raw_chat(sys_prompt, user_text):
+        captured_prompts.append(sys_prompt)
+        return f"Traduzione: {user_text}"
+
+    with patch.object(LocalLLMTranslator, "_raw_chat_request", side_effect=fake_raw_chat):
+        res = translator.translate(["Emet-Selch visited the Crystal Tower in Garlemald while Bahamut and Alphinaud watched."])
+        assert len(captured_prompts) == 1
+        sys_prompt = captured_prompts[0]
+        assert "CONTESTO LORE SPECIFICO PER QUESTA TRADUZIONE" in sys_prompt
+        assert "Emet-Selch" in sys_prompt
+        assert "Crystal Tower" in sys_prompt
+        assert "Garlemald" in sys_prompt
+        assert "Bahamut" in sys_prompt
+        assert "Alphinaud" in sys_prompt
+
+
 # ─── Runner ──────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     tests = [
+        # Lore KB
+        test_lore_kb_integration,
+        test_story_dossier_and_raids_expansion,
+        test_job_lore_dataset_integration,
+        test_factions_lore_dataset_integration,
+        test_contextual_lore_scavenger_engine,
+        test_scavenge_lore_harness_20_sentences,
+        test_scavenge_adversarial_findings,
+        test_local_llm_translator_lore_scavenging,
+
         # Masker
         test_mask_plain_text,
         test_mask_control_codes_roundtrip,
