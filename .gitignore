@@ -1,0 +1,27 @@
+# Dati locali e file generati: non pubblicare installazioni o traduzioni private.
+data/backup/
+data/csv/
+data/exd/
+data/issues.sqlite3
+export/
+history/
+runtime/
+scratch/
+test/
+
+# Crash dump e output locali.
+*.tspack
+*.bak
+*.log
+
+# Python/editor/cache.
+__pycache__/
+*.py[cod]
+*.metadata.json
+.venv/
+venv/
+.env
+
+# File di configurazione con percorsi personali.
+settings.json
+task.md

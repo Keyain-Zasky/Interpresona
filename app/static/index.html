@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#101522">
+    <title>FFXIV Translator Studio</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="ambient ambient-one"></div>
+    <div class="ambient ambient-two"></div>
+    <div class="app-shell">
+        <header class="topbar">
+            <a class="brand" href="#home-view" aria-label="FFXIV Translator Studio">
+                <span class="brand-mark">✦</span>
+                <span><strong>FFXIV</strong> Translator Studio</span>
+            </a>
+            <div class="topbar-actions"><button class="settings-link" onclick="showView('settings')">⚙ Impostazioni</button><div class="connection-state">
+                <span class="pulse-dot loading" id="sqpack-dot"></span>
+                <span id="status-copy">Controllo installazione...</span>
+            </div></div>
+        </header>
+
+        <main id="home-view">
+            <section class="hero">
+                <div class="eyebrow"><span class="eyebrow-line"></span> Strumento locale per la traduzione</div>
+                <h1>Porta FFXIV<br><em>nella tua lingua.</em></h1>
+                <p class="hero-text">Esporta i testi, lavora sui CSV e prepara i file di gioco in un flusso chiaro e controllato.</p>
+                <div class="hero-note"><span>⌁</span> I dati restano sul tuo computer. L’inject modifica gli SQPACK solo quando lo confermi.</div>
+            </section>
+
+            <section class="status-grid" aria-label="Stato del sistema">
+                <article class="status-card">
+                    <span class="status-icon">◈</span>
+                    <div><small>Installazione gioco</small><strong id="sqpack-state">Verifica in corso</strong></div>
+                </article>
+                <article class="status-card">
+                    <span class="status-icon violet">⌘</span>
+                    <div><small>Workspace CSV</small><strong id="workspace-state">In caricamento</strong></div>
+                </article>
+                <article class="status-card">
+                    <span class="status-icon green">✓</span>
+                    <div><small>Runtime Codex</small><strong id="runtime-state">Verifica in corso</strong></div>
+                </article>
+            </section>
+            <div id="storage-warning" class="settings-check invalid" hidden></div>
+
+            <section class="known-issues panel" aria-labelledby="known-issues-title">
+                <div class="known-issues-head">
+                    <div><span class="section-number">!</span><div><h2 id="known-issues-title">PROBLEMI NOTI</h2><p>Limiti e comportamenti da conoscere prima della compilazione o dell’inject.</p></div></div>
+                    <span class="issue-badge">Da verificare</span>
+                </div>
+                <div class="issue-item">
+                    <span class="issue-mark">01</span>
+                    <div><strong>Limite dimensionale empirico nelle pagine EXD</strong><p>La pagina <code>item_35500_en.exd</code> ha mostrato crash oltre circa 192.000 byte grezzi. Il limite non è ancora confermato come globale: ogni pagina può avere una compatibilità diversa.</p></div>
+                </div>
+                <div class="issue-item">
+                    <span class="issue-mark">02</span>
+                    <div><strong>Controllare sempre le variazioni di byte</strong><p>Una traduzione più lunga modifica la dimensione dell’EXD. Il log sotto le operazioni segnala ogni differenza tra originale e tradotto.</p></div>
+                </div>
+            </section>
+
+            <section class="issues-center panel" aria-labelledby="issues-center-title">
+                <div class="known-issues-head">
+                    <div><span class="section-number">?</span><div><h2 id="issues-center-title">SEGNALA UN PROBLEMA</h2><p>Invia un problema riscontrato nella traduzione o nell’applicazione. Le segnalazioni vengono salvate nel backend del progetto.</p></div></div>
+                </div>
+                <form id="issue-form" class="issue-form" onsubmit="submitIssue(event)">
+                    <label class="path-field"><span>Titolo</span><input id="issue-title" maxlength="160" required placeholder="Esempio: il gioco crasha dopo l’inject di item"></label>
+                    <div class="issue-form-grid">
+                        <label class="path-field"><span>Categoria</span><select id="issue-category"><option>Crash</option><option>EXH / EXD</option><option>CSV / tag</option><option>Inject</option><option>Interfaccia web</option><option>Altro</option></select></label>
+                        <label class="path-field"><span>Contatto opzionale</span><input id="issue-contact" maxlength="240" placeholder="Email o nome utente per ricevere risposta"></label>
+                    </div>
+                    <label class="path-field"><span>Descrizione</span><textarea id="issue-description" maxlength="12000" required placeholder="Indica cosa hai fatto, il risultato ottenuto e gli eventuali messaggi di errore."></textarea></label>
+                    <div class="settings-actions"><span class="footer-note">Non allegare password o file personali.</span><button class="button primary" type="submit">Invia segnalazione <span>→</span></button></div>
+                </form>
+                <div id="issue-submit-result" class="settings-check" hidden></div>
+                <div class="issues-admin panel">
+                    <div class="panel-title"><div class="title-icon violet-bg">⚑</div><div><h3>Gestione backend</h3><p>Area per il proprietario del progetto. In locale può restare vuota; online usa il token amministrativo.</p></div></div>
+                    <div class="issue-admin-toolbar"><input id="admin-token" type="password" placeholder="Token amministrativo (online)"><button class="button secondary" onclick="loadIssues(true)">Carica segnalazioni</button></div>
+                    <div id="issues-list" class="issues-list"><span class="footer-note">Nessuna segnalazione caricata.</span></div>
+                </div>
+            </section>
+
+            <div class="section-heading" id="catalog">
+                <div><span class="section-number">01</span><div><h2>Scegli cosa tradurre</h2><p>Seleziona uno o più fogli EXH con testo traducibile.</p></div></div>
+                <span class="section-hint">Esportazione CSV + tag</span>
+            </div>
+
+            <section class="panel catalog-panel">
+                <div class="panel-toolbar">
+                    <label class="search-box"><span>⌕</span><input id="catalog-search" placeholder="Cerca quest, item, addon..." autocomplete="off"></label>
+                    <label class="select-box"><span>Categoria</span><select id="catalog-category"><option value="all">Tutte</option></select></label>
+                </div>
+                <div class="list-toolbar">
+                    <span id="catalog-summary" class="list-summary">Catalogo in caricamento...</span>
+                    <div class="mini-actions"><button class="text-button" onclick="selectVisibleSheets(true)">Seleziona visibili</button><button class="text-button muted" onclick="selectVisibleSheets(false)">Deseleziona</button></div>
+                </div>
+                <div id="sheet-list" class="file-list">Caricamento catalogo EXH...</div>
+                <div class="panel-footer">
+                    <span class="footer-note">Solo fogli presenti negli SQPACK e con campi testuali.</span>
+                    <div class="button-row"><button class="button secondary" onclick="exportSelected(false)">Esporta selezionati <span>→</span></button><button class="button primary" onclick="exportSelected(true)">Esporta catalogo <span>↗</span></button></div>
+                </div>
+            </section>
+
+            <div class="section-heading workflow-heading">
+                <div><span class="section-number">02</span><div><h2>Prepara e applica</h2><p>Carica i CSV, compila gli EXD e, quando sei pronto, esegui l’inject.</p></div></div>
+                <span class="section-hint warning-hint">Backup prima dell’inject</span>
+            </div>
+
+            <section class="workflow-grid">
+                <article class="panel upload-panel">
+                    <div class="panel-title"><div class="title-icon">↑</div><div><h3>Carica traduzioni</h3><p>Seleziona uno o più CSV dal tuo computer.</p></div></div>
+                    <div class="format-card"><strong>Formato richiesto</strong><p>Il nome deve essere esattamente <code>NomeSheet.csv</code>, per esempio <code>addon.csv</code> o <code>item.csv</code>.</p><span>RowID · Col_0... · tag SeString preservati</span></div>
+                    <label class="dropzone"><input type="file" id="csv-upload" accept=".csv" multiple onchange="uploadCsv(this)"><span class="drop-icon">＋</span><strong>Scegli i file CSV</strong><small>oppure trascinali qui · più file disponibili</small></label>
+                    <div class="path-block"><span>CSV salvati in</span><code id="workspace-path">Caricamento...</code></div>
+                </article>
+
+                <article class="panel workspace-panel">
+                    <div class="panel-title"><div class="title-icon violet-bg">≡</div><div><h3>File nel workspace</h3><p>Seleziona i file da compilare o applicare.</p></div></div>
+                    <div class="list-toolbar workspace-toolbar"><span id="workspace-summary" class="list-summary">Workspace in caricamento...</span><div class="mini-actions"><button class="text-button" onclick="selectVisibleWorkspace(true)">Tutti</button><button class="text-button muted" onclick="selectVisibleWorkspace(false)">Nessuno</button></div></div>
+                    <div id="workspace-list" class="file-list compact">Nessun CSV caricato.</div>
+                    <div class="action-stack"><button class="button primary full" onclick="compileSelected()">Compila selezionati <span>→</span></button><button class="button inject full" onclick="hardInjectSelected()">Applica al gioco <span>↗</span></button><button class="restore-button" onclick="restoreBackup()">↶ Ripristina il backup SQPACK</button></div>
+                    <div class="path-block"><span>EXD compilati in</span><code id="exd-path">Caricamento...</code></div>
+                </article>
+            </section>
+            <div id="operation-result" class="operation-result" hidden></div>
+        </main>
+        <section id="settings-view" class="settings-view" hidden>
+            <div class="settings-head"><button class="back-link" onclick="showView('home')">← Torna al pannello</button><div class="eyebrow"><span class="eyebrow-line"></span> Configurazione locale</div><h1>Impostazioni</h1><p>Indica alla webapp dove trovare il gioco e dove salvare i file di lavoro. I percorsi vengono memorizzati solo su questo computer.</p></div>
+            <div class="settings-card panel">
+                <label class="path-field"><span>1 · Cartella del gioco</span><small>La cartella SQPACK che contiene <code>0a0000.win32.index</code> e i file <code>.dat</code>.</small><input id="settings-game" placeholder="/percorso/alla/cartella/sqpack/ffxiv"></label>
+                <label class="path-field"><span>2 · Home ufficiale del progetto</span><small>Qui la webapp crea automaticamente CSV, EXD, backup, export e storico. Non usare la cartella del gioco.</small><input id="settings-project" placeholder="/home/utente/FFXIV-Zero-Error-Translator"></label>
+                <label class="path-field"><span>3 · Cartella di test speciale</span><small>Cartella esterna da cui importare CSV già tradotti durante i test. Può essere vuota.</small><input id="settings-test" placeholder="/percorso/alle/traduzioni-da-testare"></label>
+                <div id="settings-check" class="settings-check">Impostazioni non ancora caricate.</div>
+                <div class="settings-actions"><button class="button secondary" onclick="showView('home')">Annulla</button><button class="button secondary" onclick="importConfiguredCsvs()">Importa CSV dalla cartella</button><button class="button primary" onclick="saveSettings()">Salva impostazioni <span>✓</span></button></div>
+            </div>
+            <div class="settings-tip"><strong>Nota per la versione online</strong><p>Un sito remoto non può accedere direttamente ai file del tuo PC. Questa pagina è pensata per la webapp eseguita localmente; il futuro sito potrà distribuire aggiornamenti e avviare questa configurazione.</p></div>
+        </section>
+        <footer><span>FFXIV Translator Studio</span><span>Locale · controllato · reversibile</span></footer>
+        <div id="toast-container"></div>
+    </div>
+    <script src="script.js?v=crash-audit-1"></script>
+</body>
+</html>
