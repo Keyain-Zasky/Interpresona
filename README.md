@@ -1,20 +1,23 @@
 # Interpresona — FFXIV Zero-Error Translator 2.0
 
-Webapp locale per estrarre, tradurre, compilare e iniettare dati testuali di Final Fantasy XIV direttamente negli archivi SQPACK.
+Interpresona contiene due modalità complementari per lavorare sui dati testuali di Final Fantasy XIV:
+
+- la modalità desktop originale 1.9.29, conservata nella cartella `interpresona/`;
+- la nuova webapp locale 2.0, contenuta in `app/`, pensata per estrazione, controllo, compilazione e inject diretto negli SqPack.
 
 ## Perché la 2.0
 
-La versione 1.9.29 era nata come strumento sperimentale per lavorare su pochi fogli, con percorsi distribuiti, output che potevano sovrascrivere i file e una gestione dei tag SeString non sufficientemente sicura. Durante i test con `Addon`, `Lobby` e `Item` sono emersi problemi di compatibilità, backup e soprattutto un crash causato dalla scrittura errata di un blocco SQPACK raw.
+La versione 1.9.29 era nata come strumento desktop sperimentale per lavorare su pochi fogli, con percorsi distribuiti, output che potevano sovrascrivere i file e una gestione dei tag SeString non sufficientemente sicura. Durante i test con `Addon`, `Lobby` e `Item` sono emersi problemi di compatibilità, backup e soprattutto un crash causato dalla scrittura errata di un blocco SQPACK raw.
 
-La 2.0 ricomincia dal progetto isolato e verificabile, mantenendo le traduzioni già esistenti compatibili quando la struttura CSV e i tag vengono preservati.
+La 2.0 ricomincia dal progetto isolato e verificabile, mantenendo comunque il codice desktop 1.9.29 nel repository per riferimento e compatibilità. Le traduzioni CSV già esistenti non devono essere riscritte quando struttura, RowID e tag vengono preservati.
 
 ## Cosa cambia nella 2.0
 
 - Webapp ridisegnata con sezioni separate per estrazione, workspace, compilazione/inject, impostazioni, problemi noti e segnalazioni.
-- Un solo percorso di gioco, un percorso principale del progetto e un percorso di test configurabili dalla pagina **Impostazioni**.
+- Un percorso di gioco, un percorso principale del progetto e un percorso di test configurabili dalla pagina **Impostazioni**.
 - Workspace controllato in `data/csv/current/`, EXD compilati in `data/exd/current/` e cartelle dedicate per backup, export e storico.
 - Ogni export e import crea una cartella timestampata senza sovrascrivere automaticamente i file esistenti.
-- Filtraggio dei file CSV: la webapp mostra soltanto nomi validi per evitare di usare backup, file `_original`, `_wip` o varianti temporanee.
+- Filtraggio dei file CSV: la webapp mostra soltanto nomi validi ed esclude backup, file `_original`, `_wip` e varianti temporanee.
 - Estrazione multipla degli EXH, selezione per categoria e catalogo dei fogli con testo traducibile.
 - Supporto operativo per fogli come `Addon`, `Lobby`, `Item`, `Quest`, `EventText`, `Weather` e `CustomTalk`, quando presenti nella build del gioco.
 - Parser EXH/EXD con gestione delle varianti, subrow, bitfield, fixed data e string pool.
@@ -36,7 +39,7 @@ Nel writer 2.0 un blocco non compresso usa `CompressedSize = 32000` e mantiene i
 
 Dopo ogni modifica al writer è necessario riavviare il server, perché un processo Uvicorn già attivo può continuare a usare il codice precedente.
 
-## Metodo di lavoro
+## Metodo di lavoro della webapp
 
 1. Avviare la webapp.
 2. Configurare i tre percorsi in **Impostazioni**.
@@ -51,7 +54,7 @@ Dopo ogni modifica al writer è necessario riavviare il server, perché un proce
 
 Per isolare un crash, ripristinare il backup e testare un singolo foglio alla volta. Non usare i file generati direttamente dalla cartella `export/` per l’inject: devono prima essere importati nel workspace.
 
-## Avvio locale
+## Avvio della webapp 2.0
 
 È necessario Python con le dipendenze dell’applicazione, inclusi FastAPI e Uvicorn. Dalla cartella del progetto:
 
@@ -62,6 +65,17 @@ Per isolare un crash, ripristinare il backup e testare un singolo foglio alla vo
 La pagina sarà disponibile su `http://127.0.0.1:8000/`.
 
 Il progetto non include SQPACK, CSV, EXD, backup, log o traduzioni personali. Questi file vengono creati localmente nelle cartelle escluse da Git.
+
+## Modalità desktop 1.9.29
+
+La modalità precedente resta disponibile tramite `run_gui.py` e il pacchetto `interpresona/`. Include il wizard desktop, l’ispezione delle stringhe, la traduzione automatica tramite Google Translate Free API, LibreTranslate o DeepL, il rate limiting e la suite di test originale.
+
+```bash
+uv run python run_gui.py
+uv run python interpresona/tests/run_all_tests.py
+```
+
+La webapp 2.0 è il percorso raccomandato per i nuovi test di inject diretto e per la gestione controllata di backup e storico.
 
 ## Segnalazioni online
 
@@ -86,3 +100,7 @@ Le API pubbliche sono `POST /api/issues` e `GET /api/issues`; cambio di stato e 
 ## Stato del progetto
 
 La 2.0 è una release di consolidamento e test. `Addon` e `Lobby` sono stati verificati con successo; `Item` ha richiesto una correzione specifica del writer SQPACK. I fogli più grandi e le traduzioni complete devono essere testati progressivamente, mantenendo gli snapshot disponibili per il ripristino.
+
+## Licenza
+
+Il progetto è distribuito con licenza MIT. Vedere [LICENSE](LICENSE).

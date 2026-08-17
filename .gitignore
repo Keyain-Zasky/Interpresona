@@ -1,4 +1,52 @@
-# Dati locali e file generati: non pubblicare installazioni o traduzioni private.
+# Python/editor/cache.
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.metadata.json
+.venv/
+venv/
+env/
+.env
+.agents/
+.gemini/
+.idea/
+.vscode/
+
+# Build and packaging output.
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+*.manifest
+*.spec
+
+# Test and coverage output.
+htmlcov/
+.tox/
+.nox/
+.coverage*
+.cache/
+.pytest_cache/
+coverage.xml
+cover/
+
+# Local translation sessions and generated files.
+*.ffxivts
+*.csv
+*.json
+*_translated.exd
+*_translated.exh
 data/backup/
 data/csv/
 data/exd/
@@ -9,19 +57,15 @@ runtime/
 scratch/
 test/
 
-# Crash dump e output locali.
+# Game files, backups and large local resources.
+sqpack/
+sqpack.zip
+ffxiv_translation_tool_dist.zip
+translated tests/
 *.tspack
 *.bak
 *.log
 
-# Python/editor/cache.
-__pycache__/
-*.py[cod]
-*.metadata.json
-.venv/
-venv/
-.env
-
-# File di configurazione con percorsi personali.
+# Personal configuration and internal notes.
 settings.json
 task.md
