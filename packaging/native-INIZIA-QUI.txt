@@ -1,0 +1,8 @@
+INTERPRESONA — PACCHETTO NATIVO
+
+Avvia Interpresona (Interpresona.exe su Windows oppure Interpresona su Linux/macOS).
+La GUI chiede il percorso di Final Fantasy XIV, verifica gli aggiornamenti e
+mostra una conferma prima di applicare la traduzione.
+
+Non spostare l'eseguibile dopo aver configurato l'app. Le impostazioni e i
+backup vengono conservati nella cartella Interpresona dell'utente.

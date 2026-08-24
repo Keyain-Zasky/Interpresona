@@ -1,0 +1,29 @@
+__pycache__/
+*.py[cod]
+.venv/
+app/venv/
+app/.venv/
+
+# Dati locali generati durante prove e installazioni.
+runtime/backups/
+runtime/logs/
+runtime/downloads/
+runtime/workspace/
+runtime/exd/
+runtime/test/
+runtime/*.tmp
+backups/
+logs/
+dist/
+.build/
+*.tar.gz
+
+# Configurazioni con percorsi personali o segreti.
+settings.json
+runtime/settings.json
+installer/config.json
+.env
+.env.*
+
+# Output temporanei dell'installer.
+installer/__pycache__/

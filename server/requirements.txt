@@ -1,0 +1,4 @@
+# Runtime versions verified on the production portal on 2026-08-23.
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+python-multipart==0.0.32

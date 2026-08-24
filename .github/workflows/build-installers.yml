@@ -1,0 +1,50 @@
+name: Build native installers
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*.*.*"]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: Interpresona-linux
+          - os: windows-latest
+            artifact: Interpresona-windows
+          - os: macos-latest
+            artifact: Interpresona-macos
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install build requirements
+        run: python -m pip install -r packaging/requirements-build.txt
+      - name: Build executable
+        run: python scripts/build_native.py --package dist/Interpresona-${{ matrix.artifact }}.zip
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/Interpresona-${{ matrix.artifact }}.zip
+      - name: Publish native package to portal
+        if: ${{ secrets.FFXIV_PORTAL_API_KEY != '' }}
+        shell: bash
+        env:
+          PORTAL_API_KEY: ${{ secrets.FFXIV_PORTAL_API_KEY }}
+        run: |
+          case "${{ matrix.artifact }}" in
+            Interpresona-linux) platform_name=linux-x86_64 ;;
+            Interpresona-windows) platform_name=windows-x86_64 ;;
+            Interpresona-macos) platform_name=macos-$(uname -m | sed 's/arm64/arm64/;s/x86_64/x86_64/') ;;
+          esac
+          curl --fail --silent --show-error \
+            -H "X-API-Key: ${PORTAL_API_KEY}" \
+            -F "platform_name=${platform_name}" \
+            -F "version=${GITHUB_REF_NAME#v}" \
+            -F "installer=@dist/Interpresona-${{ matrix.artifact }}.zip;filename=Interpresona-${platform_name}.zip" \
+            https://ffxiv.paolozzi.me/api/v1/admin/installer

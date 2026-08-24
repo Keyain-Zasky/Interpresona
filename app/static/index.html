@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#101522">
+    <title>Interpresona · Admin Studio locale</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="ambient ambient-one"></div>
+    <div class="ambient ambient-two"></div>
+    <div class="app-shell">
+        <header class="topbar">
+            <a class="brand" href="#home-view" aria-label="Interpresona Admin Studio">
+                <span class="brand-mark">✦</span>
+                <span><strong>INTERPRESONA</strong> Admin Studio</span>
+            </a>
+            <div class="topbar-actions"><button class="settings-link" data-action="show-settings">⚙ Impostazioni</button><div class="connection-state">
+                <span class="pulse-dot loading" id="sqpack-dot"></span>
+                <span id="status-copy">Controllo installazione...</span>
+            </div></div>
+        </header>
+
+        <main id="home-view">
+            <section class="hero">
+                <div class="eyebrow"><span class="eyebrow-line"></span> Strumento locale per la traduzione</div>
+                <h1>Porta FFXIV<br><em>nella tua lingua.</em></h1>
+                <p class="hero-text">Esporta i testi, lavora sui CSV e prepara i file di gioco in un flusso chiaro e controllato.</p>
+                <div class="hero-note"><span>⌁</span> I dati restano sul tuo computer. L’inject modifica gli SQPACK solo quando lo confermi.</div>
+            </section>
+
+            <section class="status-grid" aria-label="Stato del sistema">
+                <article class="status-card">
+                    <span class="status-icon">◈</span>
+                    <div><small>Installazione gioco</small><strong id="sqpack-state">Verifica in corso</strong></div>
+                </article>
+                <article class="status-card">
+                    <span class="status-icon violet">⌘</span>
+                    <div><small>Workspace CSV</small><strong id="workspace-state">In caricamento</strong></div>
+                </article>
+                <article class="status-card">
+                    <span class="status-icon green">✓</span>
+                    <div><small>Runtime Codex</small><strong id="runtime-state">Verifica in corso</strong></div>
+                </article>
+            </section>
+
+            <section class="workflow-steps" aria-label="Flusso di lavoro">
+                <div class="workflow-step active" data-step="1"><span>01</span><strong>Configura</strong><small>Percorsi locali</small></div>
+                <div class="workflow-connector"></div>
+                <div class="workflow-step" data-step="2"><span>02</span><strong>Estrai</strong><small>EXH → CSV</small></div>
+                <div class="workflow-connector"></div>
+                <div class="workflow-step" data-step="3"><span>03</span><strong>Traduci</strong><small>Cartella workspace</small></div>
+                <div class="workflow-connector"></div>
+                <div class="workflow-step" data-step="4"><span>04</span><strong>Verifica</strong><small>Tag e byte</small></div>
+                <div class="workflow-connector"></div>
+                <div class="workflow-step" data-step="5"><span>05</span><strong>Applica</strong><small>Compile · test · inject</small></div>
+            </section>
+
+            <div class="section-heading" id="catalog">
+                <div><span class="section-number">01</span><div><h2>Estrai i testi</h2><p>Seleziona uno o più fogli EXH con testo traducibile.</p></div></div>
+                <span class="section-hint">Esportazione CSV + tag</span>
+            </div>
+
+            <section class="panel catalog-panel">
+                <div class="panel-toolbar">
+                    <label class="search-box"><span>⌕</span><input id="catalog-search" placeholder="Cerca quest, item, addon..." autocomplete="off"></label>
+                    <label class="select-box"><span>Categoria</span><select id="catalog-category"><option value="all">Tutte</option></select></label>
+                </div>
+                <div class="list-toolbar">
+                    <span id="catalog-summary" class="list-summary">Catalogo in caricamento...</span>
+                    <div class="mini-actions"><button class="text-button" data-action="select-visible-sheets" data-value="true">Seleziona visibili</button><button class="text-button muted" data-action="select-visible-sheets" data-value="false">Deseleziona</button></div>
+                </div>
+                <div id="sheet-list" class="file-list">Caricamento catalogo EXH...</div>
+                <div class="panel-footer">
+                    <span class="footer-note">Solo fogli presenti negli SQPACK e con campi testuali.</span>
+                    <div class="button-row"><button class="button secondary" data-action="export-selected">Esporta selezionati <span>→</span></button><button class="button primary" data-action="export-catalog">Esporta catalogo <span>↗</span></button></div>
+                </div>
+            </section>
+
+            <div class="section-heading workflow-heading">
+                <div><span class="section-number">02</span><div><h2>Gestisci il workspace</h2><p>I CSV vengono letti esclusivamente dalla cartella configurata.</p></div></div>
+                <span class="section-hint warning-hint">Backup prima dell’inject</span>
+            </div>
+
+            <section class="workflow-grid">
+                <article class="panel upload-panel folder-panel">
+                    <div class="panel-title"><div class="title-icon">⌂</div><div><h3>Cartella traduzioni</h3><p>Nessun caricamento manuale: lo Studio legge i file dal percorso configurato.</p></div></div>
+                    <div class="format-card"><strong>Metodo controllato</strong><p>Salva o aggiorna i CSV nella cartella sorgente, poi sincronizza il workspace. I nomi non validi vengono ignorati.</p><span>CSV · _tags.json · _meta.json</span></div>
+                    <button class="button primary full" data-action="import-configured">Sincronizza dalla cartella <span>↻</span></button>
+                    <div class="path-block"><span>Cartella sorgente</span><code id="csv-source-path">Caricamento...</code></div>
+                    <div class="path-block"><span>Workspace attivo</span><code id="workspace-path">Caricamento...</code></div>
+                </article>
+
+                <article class="panel workspace-panel">
+                    <div class="panel-title"><div class="title-icon violet-bg">≡</div><div><h3>File nel workspace</h3><p>Seleziona i file da compilare o applicare.</p></div></div>
+                    <div class="list-toolbar workspace-toolbar"><span id="workspace-summary" class="list-summary">Workspace in caricamento...</span><div class="mini-actions"><button class="text-button" data-action="select-all-workspace">Tutti</button><button class="text-button muted" data-action="select-no-workspace">Nessuno</button></div></div>
+                    <div id="workspace-list" class="file-list compact">Nessun CSV caricato.</div>
+                    <div class="action-stack"><button class="button primary full" data-action="compile-selected">Compila selezionati <span>→</span></button><button class="button inject full" data-action="hard-inject">Applica al gioco <span>↗</span></button><button class="restore-button" data-action="restore-backup">↶ Ripristina il backup SQPACK</button></div>
+                    <div class="publish-box"><strong>Controllo locale · Pubblicazione release</strong><span>Il server riceve solo gli EXD già compilati e verificati. CSV e sidecar restano nel workspace locale e non vengono caricati.</span><input id="publish-email" type="email" placeholder="Email amministratore"><input id="publish-password" type="password" placeholder="Password amministratore"><div><input id="publish-version" value="2.0.0" placeholder="Versione"><input id="publish-patch" value="7.10 Dawntrail" placeholder="Patch"></div><button class="button secondary full" data-action="publish-selected">Pubblica release EXD sul server <span>↗</span></button></div>
+                    <div class="path-block"><span>EXD compilati in</span><code id="exd-path">Caricamento...</code></div>
+                </article>
+            </section>
+            <div class="section-heading glossary-heading">
+                <div><span class="section-number">03</span><div><h2>Dizionario ufficiale</h2><p>Ricerca nelle traduzioni approvate usate come riferimento per il lavoro sui CSV.</p></div></div>
+                <span class="section-hint">CSV aggiornato automaticamente</span>
+            </div>
+
+            <section class="panel glossary-panel" aria-labelledby="glossary-title">
+                <div class="glossary-intro"><div class="panel-title"><div class="title-icon gold-bg">⌕</div><div><h3 id="glossary-title">Termini FFXIV → Italiano</h3><p>Il file viene letto in sola lettura direttamente dal glossario Gemini.</p></div></div><code id="glossary-source" class="glossary-source">Caricamento sorgente...</code></div>
+                <div class="glossary-toolbar">
+                    <label class="search-box"><span>⌕</span><input id="glossary-search" placeholder="Cerca termine, traduzione o nota..." autocomplete="off"></label>
+                    <label class="select-box"><span>Sezione</span><select id="glossary-section"><option value="">Tutte</option></select></label>
+                    <label class="select-box"><span>Stato</span><select id="glossary-status"><option value="">Tutti</option></select></label>
+                    <button class="button secondary glossary-refresh" data-action="glossary-refresh">Aggiorna <span>↻</span></button>
+                </div>
+                <div class="list-toolbar"><span id="glossary-summary" class="list-summary">Dizionario in caricamento...</span><div class="mini-actions"><button class="text-button muted" data-action="glossary-prev">← Precedenti</button><button class="text-button" data-action="glossary-next">Successivi →</button></div></div>
+                <div id="glossary-list" class="glossary-list" aria-live="polite">Caricamento dizionario...</div>
+            </section>
+            <div id="operation-result" class="operation-result" hidden></div>
+        </main>
+        <section id="settings-view" class="settings-view" hidden>
+            <div class="settings-head"><button class="back-link" data-action="show-home">← Torna al pannello</button><div class="eyebrow"><span class="eyebrow-line"></span> Configurazione locale</div><h1>Impostazioni</h1><p>Indica alla webapp dove trovare il gioco e dove salvare i file di lavoro. I percorsi vengono memorizzati solo su questo computer.</p></div>
+            <div class="settings-card panel">
+                <label class="path-field"><span>Cartella SQPACK del gioco</span><small>La cartella deve contenere <code>0a0000.win32.index</code> e i file <code>.dat</code>.</small><input id="settings-sqpack" placeholder="/percorso/alla/cartella/sqpack/ffxiv"></label>
+                <label class="path-field"><span>Cartella sorgente traduzioni</span><small>Cartella con i CSV già tradotti. Lo Studio li sincronizza nel workspace senza upload manuali.</small><input id="settings-csv" placeholder="/percorso/alle/traduzioni"></label>
+                <label class="path-field"><span>Cartella workspace ed esportazione</span><small>Qui vengono salvati CSV esportati, tag, metadati ed EXD compilati.</small><input id="settings-workspace" placeholder="/percorso/workspace/ffxiv"></label>
+                <label class="path-field"><span>Cartella EXD compilati</span><small>Destinazione dei file binari pronti per l’inject. Può coincidere con il workspace.</small><input id="settings-exd" placeholder="/percorso/output/exd"></label>
+                <div id="settings-check" class="settings-check">Impostazioni non ancora caricate.</div>
+                <div class="settings-actions"><button class="button secondary" data-action="show-home">Annulla</button><button class="button secondary" data-action="import-configured">Importa CSV dalla cartella</button><button class="button primary" data-action="save-settings">Salva impostazioni <span>✓</span></button></div>
+            </div>
+            <div class="settings-tip"><strong>Nota per la versione online</strong><p>Un sito remoto non può accedere direttamente ai file del tuo PC. Questa pagina è pensata per la webapp eseguita localmente; il futuro sito potrà distribuire aggiornamenti e avviare questa configurazione.</p></div>
+        </section>
+        <footer><span>Interpresona Admin Studio</span><span>Locale · controllato · reversibile</span></footer>
+        <div id="toast-container"></div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+INTERPRESONA — INSTALLER PUBBLICO
+
+1. Estrai tutto il contenuto dello ZIP in una cartella.
+2. Windows: fai doppio clic su Interpresona-Installer.bat.
+3. Linux: esegui "sh Interpresona-Installer.sh" dal terminale.
+4. macOS: apri Interpresona-Installer.command oppure esegui "sh Interpresona-Installer.command" dal terminale.
+
+L'installer chiederà soltanto dove è installato Final Fantasy XIV.
+Non avviare direttamente interpresona_installer.py: su alcuni sistemi
+Python lo apre senza mostrare una finestra.
+
+Se compare un messaggio su Python, installa Python 3.10 o superiore e
+riapri il launcher. Il programma non richiede uvicorn, mod/plugin o altri
+componenti del progetto di traduzione.
