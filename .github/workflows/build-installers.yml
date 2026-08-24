@@ -16,6 +16,8 @@ jobs:
             artifact: Interpresona-windows
           - os: macos-latest
             artifact: Interpresona-macos
+          - os: macos-13
+            artifact: Interpresona-macos-intel
     runs-on: ${{ matrix.os }}
     env:
       PORTAL_API_KEY: ${{ secrets.FFXIV_PORTAL_API_KEY }}
@@ -40,6 +42,7 @@ jobs:
           case "${{ matrix.artifact }}" in
             Interpresona-linux) platform_name=linux-x86_64 ;;
             Interpresona-windows) platform_name=windows-x86_64 ;;
+            Interpresona-macos-intel) platform_name=macos-x86_64 ;;
             Interpresona-macos) platform_name=macos-$(uname -m | sed 's/arm64/arm64/;s/x86_64/x86_64/') ;;
           esac
           curl --fail --silent --show-error \
