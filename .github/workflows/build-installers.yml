@@ -2,6 +2,11 @@ name: Build native installers
 
 on:
   workflow_dispatch:
+    inputs:
+      installer_version:
+        description: "Versione dell'installer da pubblicare"
+        required: false
+        default: "0.4.0"
   push:
     tags: ["v*.*.*"]
 
@@ -37,6 +42,8 @@ jobs:
         if: ${{ env.PORTAL_API_KEY != '' }}
         shell: bash
         run: |
+          release_version="${{ inputs.installer_version }}"
+          if [ -z "$release_version" ]; then release_version="${GITHUB_REF_NAME#v}"; fi
           case "${{ matrix.artifact }}" in
             Interpresona-linux) platform_name=linux-x86_64 ;;
             Interpresona-windows) platform_name=windows-x86_64 ;;
@@ -45,6 +52,6 @@ jobs:
           curl --fail --silent --show-error \
             -H "X-API-Key: ${PORTAL_API_KEY}" \
             -F "platform_name=${platform_name}" \
-            -F "version=${GITHUB_REF_NAME#v}" \
+            -F "version=${release_version}" \
             -F "installer=@dist/Interpresona-${{ matrix.artifact }}.zip;filename=Interpresona-${platform_name}.zip" \
             https://ffxiv.paolozzi.me/api/v1/admin/installer
