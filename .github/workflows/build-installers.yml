@@ -17,6 +17,8 @@ jobs:
           - os: macos-latest
             artifact: Interpresona-macos
     runs-on: ${{ matrix.os }}
+    env:
+      PORTAL_API_KEY: ${{ secrets.FFXIV_PORTAL_API_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -32,10 +34,8 @@ jobs:
           name: ${{ matrix.artifact }}
           path: dist/Interpresona-${{ matrix.artifact }}.zip
       - name: Publish native package to portal
-        if: ${{ secrets.FFXIV_PORTAL_API_KEY != '' }}
+        if: ${{ env.PORTAL_API_KEY != '' }}
         shell: bash
-        env:
-          PORTAL_API_KEY: ${{ secrets.FFXIV_PORTAL_API_KEY }}
         run: |
           case "${{ matrix.artifact }}" in
             Interpresona-linux) platform_name=linux-x86_64 ;;
