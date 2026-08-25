@@ -5,6 +5,9 @@ let selectedWorkspace = new Set();
 let glossaryOffset = 0;
 const glossaryLimit = 50;
 let glossarySearchTimer;
+let operationStartedAt = 0;
+let operationElapsedTimer = null;
+let operationPhaseTimer = null;
 
 document.addEventListener('DOMContentLoaded', () => {
     checkStatus();
@@ -98,14 +101,24 @@ async function saveSettings() {
 }
 
 async function importConfiguredCsvs() {
+    startOperation('Scansione e sincronizzazione', 'Lettura della cartella sorgente e controllo dei nomi CSV...', null, [
+        'Lettura della cartella sorgente...',
+        'Verifica degli EXH compatibili...',
+        'Copia dei CSV validi nel workspace...'
+    ]);
     try {
         const res = await fetch('/api/import_csv_folder', {method: 'POST'});
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'Importazione fallita');
-        showToast(`${data.imported.length} CSV importati${data.errors.length ? `, ${data.errors.length} ignorati` : ''}.`, data.errors.length ? 'error' : 'success');
+        const summary = `${data.imported.length} CSV importati${data.errors.length ? ` · ${data.errors.length} ignorati` : ''}.`;
+        finishOperation(!data.errors.length, 'Scansione completata', summary, data.imported.length, data.errors.length ? 'Completata con avvisi' : 'Completata');
+        showToast(summary, data.errors.length ? 'error' : 'success');
         await refreshWorkspaceFiles();
         setWorkflowStep(3);
-    } catch (error) { showToast(error.message, 'error'); }
+    } catch (error) {
+        finishOperation(false, 'Scansione non completata', error.message, 0, 'Errore');
+        showToast(error.message, 'error');
+    }
 }
 
 function showToast(message, type = 'success') {
@@ -115,6 +128,73 @@ function showToast(message, type = 'success') {
     toast.textContent = message;
     container.appendChild(toast);
     setTimeout(() => { toast.style.animation = 'fadeOut 0.3s ease forwards'; setTimeout(() => toast.remove(), 300); }, 5000);
+}
+
+function formatElapsed(seconds) {
+    const whole = Math.max(0, Math.floor(seconds));
+    const minutes = Math.floor(whole / 60);
+    return `${minutes}:${String(whole % 60).padStart(2, '0')}`;
+}
+
+function startOperation(title, detail, total = null, phases = []) {
+    const monitor = document.getElementById('operation-monitor');
+    const result = document.getElementById('operation-result');
+    if (!monitor) return;
+    if (result) result.hidden = true;
+    monitor.hidden = false;
+    monitor.className = 'operation-monitor running';
+    document.getElementById('operation-monitor-icon').textContent = '◌';
+    document.getElementById('operation-monitor-title').textContent = title;
+    document.getElementById('operation-monitor-detail').textContent = detail;
+    document.getElementById('operation-monitor-state').textContent = 'In corso';
+    document.getElementById('operation-monitor-count').textContent = total ? `0 / ${total} elementi · elaborazione sul server` : 'Elaborazione sul server in corso';
+    document.getElementById('operation-monitor-elapsed').textContent = '0:00';
+    const bar = document.getElementById('operation-progress-bar');
+    bar.className = 'operation-progress-bar indeterminate';
+    bar.style.width = '';
+    setOperationButtonsBusy(true);
+    operationStartedAt = Date.now();
+    clearInterval(operationElapsedTimer);
+    operationElapsedTimer = setInterval(() => {
+        const elapsed = document.getElementById('operation-monitor-elapsed');
+        if (elapsed) elapsed.textContent = formatElapsed((Date.now() - operationStartedAt) / 1000);
+    }, 1000);
+    clearInterval(operationPhaseTimer);
+    if (phases.length > 1) {
+        let phase = 0;
+        operationPhaseTimer = setInterval(() => {
+            phase = (phase + 1) % phases.length;
+            const detailNode = document.getElementById('operation-monitor-detail');
+            if (detailNode) detailNode.textContent = phases[phase];
+        }, 2600);
+    }
+}
+
+function finishOperation(success, title, detail, total = null, state = null) {
+    const monitor = document.getElementById('operation-monitor');
+    if (!monitor) return;
+    clearInterval(operationElapsedTimer);
+    clearInterval(operationPhaseTimer);
+    operationElapsedTimer = null;
+    operationPhaseTimer = null;
+    monitor.className = `operation-monitor ${success ? 'completed' : 'failed'}`;
+    document.getElementById('operation-monitor-icon').textContent = success ? '✓' : '!';
+    document.getElementById('operation-monitor-title').textContent = title;
+    document.getElementById('operation-monitor-detail').textContent = detail;
+    document.getElementById('operation-monitor-state').textContent = state || (success ? 'Completata' : 'Errore');
+    document.getElementById('operation-monitor-count').textContent = total ? `${total} / ${total} elementi elaborati` : 'Nessun elemento elaborato';
+    document.getElementById('operation-monitor-elapsed').textContent = formatElapsed((Date.now() - operationStartedAt) / 1000);
+    const bar = document.getElementById('operation-progress-bar');
+    bar.className = 'operation-progress-bar';
+    bar.style.width = '100%';
+    setOperationButtonsBusy(false);
+}
+
+function setOperationButtonsBusy(busy) {
+    const actions = new Set(['import-configured', 'export-selected', 'export-catalog', 'compile-selected', 'hard-inject', 'restore-backup', 'publish-selected']);
+    document.querySelectorAll('[data-action]').forEach(button => {
+        if (actions.has(button.dataset.action)) button.disabled = busy;
+    });
 }
 
 function escapeHtml(value) {
@@ -167,6 +247,11 @@ async function checkStatus() {
 }
 
 async function loadCatalog() {
+    startOperation('Scansione catalogo EXH', 'Lettura degli archivi e riconoscimento dei fogli disponibili...', null, [
+        'Lettura dell’indice SQPACK...',
+        'Riconoscimento dei file EXH...',
+        'Organizzazione per categoria...'
+    ]);
     try {
         const data = await (await fetch('/api/exh_catalog')).json();
         sheets = data.sheets || data.files.map(name => ({name, category: 'EXH'}));
@@ -174,7 +259,11 @@ async function loadCatalog() {
         const select = document.getElementById('catalog-category');
         categories.forEach(category => select.add(new Option(category, category)));
         renderCatalog();
-    } catch (_) { showToast('Impossibile caricare il catalogo EXH.', 'error'); }
+        finishOperation(true, 'Scansione EXH completata', `${sheets.length} fogli riconosciuti e pronti.`, sheets.length, 'Completata');
+    } catch (error) {
+        finishOperation(false, 'Scansione EXH non completata', error.message || 'Catalogo non disponibile.', 0, 'Errore');
+        showToast('Impossibile caricare il catalogo EXH.', 'error');
+    }
 }
 
 function visibleSheets() {
@@ -328,6 +417,17 @@ async function hardInjectSelected() {
 }
 
 async function runBatch(endpoint, names, successMessage) {
+    const operationTitles = {
+        '/api/export_batch': 'Esportazione EXH',
+        '/api/compile_batch': 'Compilazione EXD',
+        '/api/hard_inject_batch': 'Applicazione negli SQPACK'
+    };
+    const operationTitle = operationTitles[endpoint] || 'Operazione';
+    startOperation(operationTitle, `Preparazione di ${names.length} elementi...`, names.length, [
+        `Preparazione di ${names.length} elementi...`,
+        'Elaborazione sul server...',
+        'Verifica dei risultati e dei byte...'
+    ]);
     try {
         const res = await fetch(endpoint, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({exh_names: names})});
         const data = await res.json();
@@ -347,12 +447,18 @@ async function runBatch(endpoint, names, successMessage) {
             output.innerHTML = `<strong>${escapeHtml(successMessage)}</strong><br><span>${paths.length ? paths.join('<br>') : 'Controlla il workspace per i file risultanti.'}</span>${audit}`;
         }
         if (failed.length) {
+            finishOperation(false, `${operationTitle} conclusa con errori`, `${failed.length} elemento/i non elaborato/i.`, successful.length, 'Completata con errori');
             showToast(`${successMessage} Errori: ${failed.map(item => item.name).join(', ')}`, 'error');
             return false;
         }
+        finishOperation(true, `${operationTitle} completata`, successMessage, names.length, 'Completata');
         showToast(successMessage);
         return true;
-    } catch (error) { showToast(error.message, 'error'); return false; }
+    } catch (error) {
+        finishOperation(false, `${operationTitle} non completata`, error.message, 0, 'Errore');
+        showToast(error.message, 'error');
+        return false;
+    }
 }
 
 async function publishSelected() {
@@ -363,21 +469,36 @@ async function publishSelected() {
     const password = document.getElementById('publish-password').value;
     if (!files.length) return showToast('Seleziona almeno un CSV da pubblicare.', 'error');
     if (!email || !password) return showToast('Inserisci le credenziali amministrative solo per questa pubblicazione.', 'error');
+    startOperation('Pubblicazione release', 'Verifica credenziali e preparazione dell’archivio EXD...', files.length, [
+        'Verifica delle credenziali amministrative...',
+        'Controllo degli EXD compilati e dei checksum...',
+        'Trasferimento della release al portale...'
+    ]);
     try {
         const res = await fetch('/api/publish_workspace', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({files, version: document.getElementById('publish-version').value, game_patch: document.getElementById('publish-patch').value, admin_email: email, admin_password: password})});
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'Pubblicazione fallita');
-        showToast(`Release pubblicata: pacchetto EXD verificato (${files.length} sheet).`, 'success');
+        const summary = `Release pubblicata: pacchetto EXD verificato (${files.length} sheet).`;
+        finishOperation(true, 'Pubblicazione completata', summary, files.length, 'Completata');
+        showToast(summary, 'success');
         document.getElementById('publish-password').value = '';
         setWorkflowStep(5);
-    } catch (error) { showToast(error.message, 'error'); }
+    } catch (error) {
+        finishOperation(false, 'Pubblicazione non completata', error.message, 0, 'Errore');
+        showToast(error.message, 'error');
+    }
 }
 
 async function restoreBackup() {
     if (!confirm('Ripristinare i backup originali di dat0 e index?')) return;
+    startOperation('Ripristino backup', 'Ripristino controllato dei file SQPACK originali...', 3);
     try {
         const res = await fetch('/api/restore_backup', {method: 'POST'}); const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'Ripristino fallito');
+        finishOperation(true, 'Ripristino completato', 'I file originali sono stati ripristinati.', 3, 'Completata');
         showToast('Backup ripristinato.');
-    } catch (error) { showToast(error.message, 'error'); }
+    } catch (error) {
+        finishOperation(false, 'Ripristino non completato', error.message, 0, 'Errore');
+        showToast(error.message, 'error');
+    }
 }

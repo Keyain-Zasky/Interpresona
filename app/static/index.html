@@ -101,6 +101,15 @@
                     <div class="path-block"><span>EXD compilati in</span><code id="exd-path">Caricamento...</code></div>
                 </article>
             </section>
+            <section id="operation-monitor" class="operation-monitor" hidden aria-live="polite" aria-atomic="false">
+                <div class="operation-monitor-head">
+                    <div class="operation-monitor-title"><span id="operation-monitor-icon" class="operation-monitor-icon">◌</span><div><strong id="operation-monitor-title">Operazione</strong><small id="operation-monitor-detail">In attesa...</small></div></div>
+                    <span id="operation-monitor-state" class="operation-state">In attesa</span>
+                </div>
+                <div class="operation-progress-track"><div id="operation-progress-bar" class="operation-progress-bar"></div></div>
+                <div class="operation-monitor-foot"><span id="operation-monitor-count">Preparazione...</span><span id="operation-monitor-elapsed"></span></div>
+            </section>
+            <div id="operation-result" class="operation-result" hidden></div>
             <div class="section-heading glossary-heading">
                 <div><span class="section-number">03</span><div><h2>Dizionario ufficiale</h2><p>Ricerca nelle traduzioni approvate usate come riferimento per il lavoro sui CSV.</p></div></div>
                 <span class="section-hint">CSV aggiornato automaticamente</span>
@@ -117,7 +126,6 @@
                 <div class="list-toolbar"><span id="glossary-summary" class="list-summary">Dizionario in caricamento...</span><div class="mini-actions"><button class="text-button muted" data-action="glossary-prev">← Precedenti</button><button class="text-button" data-action="glossary-next">Successivi →</button></div></div>
                 <div id="glossary-list" class="glossary-list" aria-live="polite">Caricamento dizionario...</div>
             </section>
-            <div id="operation-result" class="operation-result" hidden></div>
         </main>
         <section id="settings-view" class="settings-view" hidden>
             <div class="settings-head"><button class="back-link" data-action="show-home">← Torna al pannello</button><div class="eyebrow"><span class="eyebrow-line"></span> Configurazione locale</div><h1>Impostazioni</h1><p>Indica alla webapp dove trovare il gioco e dove salvare i file di lavoro. I percorsi vengono memorizzati solo su questo computer.</p></div>
