@@ -2,8 +2,11 @@
 # Script di avvio per FFXIV Zero-Error Translator Suite.
 # Funziona sia con `bash start.sh` sia con `sh start.sh`.
 
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd) || exit 1
-cd "$SCRIPT_DIR/app" || exit 1
+PROJECT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd) || exit 1
+APP_DIR="$PROJECT_DIR/app"
+REQUIREMENTS_FILE="$PROJECT_DIR/server/requirements.txt"
+[ -f "$APP_DIR/main.py" ] || { echo "Errore: backend non trovato in $APP_DIR"; exit 1; }
+cd "$APP_DIR" || exit 1
 
 echo "========================================="
 echo " FFXIV Zero-Error Translator Suite"
@@ -13,6 +16,7 @@ echo "Avvio del server backend in corso..."
 echo "L'interfaccia grafica sarà disponibile su:"
 PORT="${PORT:-8000}"
 echo "👉 http://127.0.0.1:$PORT"
+echo "Progetto: $PROJECT_DIR"
 echo ""
 echo "Premi CTRL+C per spegnere il server."
 echo "========================================="
@@ -21,8 +25,7 @@ echo ""
 # Cerca un ambiente che contenga entrambe le dipendenze del backend.
 PYTHON_CANDIDATES="${PYTHON_BIN:-}"
 PYTHON_CANDIDATES="$PYTHON_CANDIDATES
-$SCRIPT_DIR/.venv/bin/python
-$SCRIPT_DIR/app/venv/bin/python
+$PROJECT_DIR/.venv/bin/python
 $(command -v python3 2>/dev/null || true)
 $(command -v python 2>/dev/null || true)"
 
@@ -39,11 +42,11 @@ $PYTHON_CANDIDATES
 EOF
 
 if [ -z "$PYTHON_BIN" ] && command -v python3 >/dev/null 2>&1; then
-    LOCAL_VENV="$SCRIPT_DIR/.venv"
+    LOCAL_VENV="$PROJECT_DIR/.venv"
     BOOTSTRAP_PYTHON=$(command -v python3)
     echo "Dipendenze non trovate: preparo un ambiente Python locale in $LOCAL_VENV..."
     if "$BOOTSTRAP_PYTHON" -m venv "$LOCAL_VENV" && \
-       PIP_DISABLE_PIP_VERSION_CHECK=1 "$LOCAL_VENV/bin/python" -m pip install --disable-pip-version-check -r "$SCRIPT_DIR/server/requirements.txt" >/dev/null; then
+       PIP_DISABLE_PIP_VERSION_CHECK=1 "$LOCAL_VENV/bin/python" -m pip install --disable-pip-version-check -r "$REQUIREMENTS_FILE" >/dev/null; then
         if "$LOCAL_VENV/bin/python" -c 'import fastapi, uvicorn' >/dev/null 2>&1; then
             PYTHON_BIN="$LOCAL_VENV/bin/python"
         fi
