@@ -15,6 +15,7 @@ import json
 import os
 import platform
 import shutil
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -22,6 +23,11 @@ import urllib.error
 import urllib.request
 import zipfile
 from pathlib import Path
+
+try:
+    import certifi
+except ImportError:  # pragma: no cover - il pacchetto nativo lo include
+    certifi = None
 
 
 if getattr(sys, "frozen", False):
@@ -36,7 +42,7 @@ PROJECT_DIR = Path.home() / "Interpresona"
 DEFAULT_CONFIG = Path.home() / ".config" / "interpresona" / "config.json"
 DEFAULT_API = "https://ffxiv.paolozzi.me/api/v1"
 INSTALLED_RELEASE_FILENAME = "release-manifest.json"
-APP_VERSION = "0.4.0"
+APP_VERSION = "0.4.1"
 
 # The public package carries only the engine and its catalog. Runtime data is
 # kept in a user-writable directory instead of beside the downloaded script.
@@ -323,13 +329,36 @@ def restore_backup(project: Path, backup_name: str | None) -> None:
 def fetch_json(url: str) -> dict:
     request = urllib.request.Request(url, headers={"User-Agent": "Interpresona-Installer/2", "Cache-Control": "no-cache", "Pragma": "no-cache"})
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
+        with urllib.request.urlopen(request, timeout=30, context=_https_context()) as response:
             data = json.loads(response.read().decode("utf-8"))
     except (OSError, urllib.error.URLError, json.JSONDecodeError) as exc:
         raise SystemExit(f"Impossibile leggere il server di distribuzione: {exc}")
     if not isinstance(data, dict):
         raise SystemExit("Risposta del server non valida.")
     return data
+
+
+def _https_context() -> ssl.SSLContext:
+    """Usa i certificati del sistema e, se disponibili, quelli di certifi.
+
+    Alcune distribuzioni Linux e alcuni bundle PyInstaller non espongono a
+    Python lo stesso archivio CA usato dal browser. Aggiungere certifi al
+    contesto di sistema mantiene la verifica HTTPS attiva e rende il client
+    indipendente dalla configurazione locale dei certificati.
+    """
+    context = ssl.create_default_context()
+    bundled_ca = RESOURCE_DIR / "certifi-ca.pem"
+    if bundled_ca.is_file():
+        try:
+            context.load_verify_locations(cafile=str(bundled_ca))
+        except (OSError, ssl.SSLError):
+            pass
+    if certifi is not None:
+        try:
+            context.load_verify_locations(cafile=certifi.where())
+        except (OSError, ssl.SSLError):
+            pass
+    return context
 
 
 def safe_zip_member(name: str) -> str:
@@ -350,7 +379,7 @@ def download_archive(url: str, expected_hash: str, directory: Path, label: str, 
     archive = directory / f"{label}.zip"
     request = urllib.request.Request(url, headers={"User-Agent": "Interpresona-Installer/3", "Cache-Control": "no-cache", "Pragma": "no-cache"})
     try:
-        with urllib.request.urlopen(request, timeout=120) as response, archive.open("wb") as output:
+        with urllib.request.urlopen(request, timeout=120, context=_https_context()) as response, archive.open("wb") as output:
             total = int(response.headers.get("Content-Length", "0") or 0)
             copied = 0
             while True:

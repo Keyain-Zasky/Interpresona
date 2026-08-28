@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import certifi
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
@@ -20,6 +21,7 @@ FILES = (
     (ROOT / "installer" / "INIZIA-QUI.txt", "INIZIA-QUI.txt"),
     (ROOT / "installer" / "README.md", "README.md"),
     (ROOT / "installer" / "config.example.json", "config.example.json"),
+    (Path(certifi.where()), "certifi-ca.pem"),
     (ROOT / "app" / "ffxiv_engine.py", "app/ffxiv_engine.py"),
     (ROOT / "app" / "ffxiv_sheets.txt", "app/ffxiv_sheets.txt"),
 )
