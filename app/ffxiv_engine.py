@@ -650,8 +650,18 @@ def _make_dat_entry(raw):
     for chunk in chunks:
         obj = zlib.compressobj(wbits=-15); compressed = obj.compress(chunk) + obj.flush()
         use_raw = len(compressed) >= len(chunk)
-        payload = chunk if use_raw else compressed
-        c_size = len(payload); pad = (128 - ((16 + c_size) % 128)) % 128
+        if use_raw:
+            # Nel writer SQPACK il blocco raw usa 32000 come sentinel nel
+            # campo CompressedSize. Il payload deve quindi essere esteso fino
+            # a quel limite; scrivere la sola dimensione reale (24/36 byte
+            # per alcune pagine Item) produce EXD che il client può rifiutare
+            # con un crash all'avvio.
+            c_size = 32000
+            payload = chunk + bytes(c_size - len(chunk))
+        else:
+            payload = compressed
+            c_size = len(payload)
+        pad = (128 - ((16 + c_size) % 128)) % 128
         infos.append((block_offset, 16 + c_size + pad, len(chunk)))
         blocks.extend(struct.pack("<IIII", 16, 0, c_size, len(chunk)))
         blocks.extend(payload); blocks.extend(bytes(pad)); block_offset += 16 + c_size + pad

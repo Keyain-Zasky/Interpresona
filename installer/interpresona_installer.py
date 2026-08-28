@@ -42,7 +42,7 @@ PROJECT_DIR = Path.home() / "Interpresona"
 DEFAULT_CONFIG = Path.home() / ".config" / "interpresona" / "config.json"
 DEFAULT_API = "https://ffxiv.paolozzi.me/api/v1"
 INSTALLED_RELEASE_FILENAME = "release-manifest.json"
-APP_VERSION = "0.4.1"
+APP_VERSION = "0.4.2"
 
 # The public package carries only the engine and its catalog. Runtime data is
 # kept in a user-writable directory instead of beside the downloaded script.
