@@ -490,7 +490,7 @@ async function publishSelected() {
 }
 
 async function restoreBackup() {
-    if (!confirm('Ripristinare i backup originali di dat0 e index?')) return;
+    if (!confirm('Ripristinare i backup originali degli SQPACK?')) return;
     startOperation('Ripristino backup', 'Ripristino controllato dei file SQPACK originali...', 3);
     try {
         const res = await fetch('/api/restore_backup', {method: 'POST'}); const data = await res.json();

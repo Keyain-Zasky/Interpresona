@@ -292,15 +292,24 @@ def _build_existing_exd_archive(sheet_names, output, version, game_patch):
 def api_restore_backup():
     import shutil
     try:
-        dat0 = os.path.join(ffxiv_engine.SQPACK_DIR, "0a0000.win32.dat0")
-        idx = ffxiv_engine.INDEX_PATH
-        idx2 = idx.replace(".index", ".index2")
-        if (os.path.exists(dat0 + ".bak") and os.path.exists(idx + ".bak")
-                and os.path.exists(idx2 + ".bak")):
-            shutil.copy2(dat0 + ".bak", dat0)
-            shutil.copy2(idx + ".bak", idx)
-            shutil.copy2(idx2 + ".bak", idx2)
-            return {"success": True}
+        idx = Path(ffxiv_engine.INDEX_PATH)
+        idx2 = Path(idx.with_suffix(".index2"))
+        targets = [idx, idx2]
+        targets.extend(sorted(
+            path for path in Path(ffxiv_engine.SQPACK_DIR).iterdir()
+            if re.fullmatch(r"0a0000\.win32\.dat\d+", path.name)
+        ))
+        required = [(source, Path(str(source) + ".bak")) for source in targets[:2]]
+        dat_backups = [
+            (source, Path(str(source) + ".bak"))
+            for source in targets[2:]
+            if Path(str(source) + ".bak").is_file()
+        ]
+        pairs = required + dat_backups
+        if all(backup.is_file() for _, backup in required) and dat_backups:
+            for source, backup in pairs:
+                shutil.copy2(backup, source)
+            return {"success": True, "restored": [source.name for source, _ in pairs]}
         raise HTTPException(status_code=400, detail="File di backup non trovati.")
     except HTTPException:
         raise

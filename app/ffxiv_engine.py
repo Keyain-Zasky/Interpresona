@@ -714,6 +714,13 @@ def _inject_one(file_name, raw):
     dat_path = os.path.join(SQPACK_DIR, f"0a0000.win32.dat{dat_idx}")
     old_size = os.path.getsize(dat_path); new_offset = (old_size + 127) & ~127
     entry = _make_dat_entry(raw)
+    with open(INDEX_PATH, "rb") as idx:
+        idx.seek(entry_pos + 8); old_index_value = idx.read(4)
+    old_index2_value = None
+    index2_path = INDEX_PATH.replace(".index", ".index2")
+    if target2 is not None:
+        with open(index2_path, "rb") as idx2:
+            idx2.seek(target2[0] + 4); old_index2_value = idx2.read(4)
     try:
         with open(dat_path, "ab") as dat:
             dat.write(bytes(new_offset - old_size)); dat.write(entry)
@@ -721,13 +728,20 @@ def _inject_one(file_name, raw):
         with open(INDEX_PATH, "r+b") as idx:
             idx.seek(entry_pos + 8); idx.write(struct.pack("<I", encoded))
         if target2 is not None:
-            index2_path = INDEX_PATH.replace(".index", ".index2")
             with open(index2_path, "r+b") as idx2:
                 idx2.seek(target2[0] + 4); idx2.write(struct.pack("<I", encoded))
         return {"file": file_name, "old_offset": hex(old_offset), "new_offset": hex(new_offset)}
     except Exception:
         try:
             with open(dat_path, "r+b") as dat: dat.truncate(old_size)
+        except OSError:
+            pass
+        try:
+            with open(INDEX_PATH, "r+b") as idx:
+                idx.seek(entry_pos + 8); idx.write(old_index_value)
+            if target2 is not None and old_index2_value is not None:
+                with open(index2_path, "r+b") as idx2:
+                    idx2.seek(target2[0] + 4); idx2.write(old_index2_value)
         except OSError:
             pass
         raise
@@ -750,10 +764,16 @@ def hard_inject_sqpack(exh_name):
             return {"error": f"{file_name} non trovato nell'indice. Nessun inject eseguito."}
         results.append((file_name, open(path, "rb").read()))
     # Preserve the first known-good state. Existing backups are never replaced.
-    for source in (os.path.join(SQPACK_DIR, "0a0000.win32.dat0"), INDEX_PATH,
-                   INDEX_PATH.replace(".index", ".index2")):
+    # Selected EXD pages can live in dat0, dat1, ...; backing up dat0 alone
+    # makes the Studio restore incomplete for sheets stored elsewhere.
+    backup_sources = [INDEX_PATH, INDEX_PATH.replace(".index", ".index2")]
+    for file_name, _ in results:
+        target = _index_entry(file_name)
+        if target is not None:
+            backup_sources.append(os.path.join(SQPACK_DIR, f"0a0000.win32.dat{target[1]}"))
+    for source in dict.fromkeys(backup_sources):
         backup = source + ".bak"
-        if not os.path.exists(backup):
+        if os.path.isfile(source) and not os.path.exists(backup):
             shutil.copy2(source, backup)
     schema = parse_exh(read_file(f"{name}.exh"))
     originals = {file_name: original for _, _, file_name, original in _page_files(name, schema)}

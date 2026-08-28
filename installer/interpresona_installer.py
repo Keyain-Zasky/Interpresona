@@ -16,6 +16,7 @@ import os
 import platform
 import shutil
 import ssl
+import struct
 import subprocess
 import sys
 import tempfile
@@ -42,7 +43,7 @@ PROJECT_DIR = Path.home() / "Interpresona"
 DEFAULT_CONFIG = Path.home() / ".config" / "interpresona" / "config.json"
 DEFAULT_API = "https://ffxiv.paolozzi.me/api/v1"
 INSTALLED_RELEASE_FILENAME = "release-manifest.json"
-APP_VERSION = "0.4.2"
+APP_VERSION = "0.4.3"
 
 # The public package carries only the engine and its catalog. Runtime data is
 # kept in a user-writable directory instead of beside the downloaded script.
@@ -468,6 +469,12 @@ def update_exd_from_server(config: dict, manifest: dict, progress=None) -> dict:
                     hashes = metadata.get("sha256", {})
                     if not isinstance(files, list) or not files:
                         raise SystemExit(f"Manifest EXD senza file per {sheet}.")
+                    try:
+                        schema = engine.parse_exh(engine.read_file(f"{sheet}.exh"))
+                    except (OSError, ValueError, TypeError, struct.error) as exc:
+                        raise SystemExit(
+                            f"Release EXD incompatibile con il catalogo locale per {sheet}: {exc}"
+                        ) from exc
                     for file_name in files:
                         member = safe_zip_member(f"exd/{file_name}")
                         if member not in names:
@@ -476,6 +483,15 @@ def update_exd_from_server(config: dict, manifest: dict, progress=None) -> dict:
                         expected_file_hash = str(hashes.get(file_name, "")).lower()
                         if not expected_file_hash or hashlib.sha256(data).hexdigest() != expected_file_hash:
                             raise SystemExit(f"Checksum EXD non corrispondente: {file_name}")
+                        try:
+                            if len(data) < 32 or data[:4] != b"EXDF":
+                                raise ValueError("firma EXDF assente")
+                            index_size, data_size = struct.unpack(">II", data[8:16])
+                            if index_size % 8 or 32 + index_size + data_size > len(data):
+                                raise ValueError("dimensioni header non valide")
+                            engine._row_records(data, schema)
+                        except (ValueError, TypeError, struct.error) as exc:
+                            raise SystemExit(f"EXD non valido o non compatibile: {file_name}: {exc}") from exc
                         destination = staged / file_name
                         destination.parent.mkdir(parents=True, exist_ok=True)
                         destination.write_bytes(data)
@@ -585,26 +601,37 @@ def install(args: argparse.Namespace, config: dict, config_path: Path, progress=
     if invalid:
         raise SystemExit("File non presenti nell'indice SQPACK: " + ", ".join(invalid[:8]))
 
-    processes = running_game_processes()
-    if processes and not args.force:
-        raise SystemExit("Chiudi il gioco/XIVLauncher prima dell'inject (usa --force solo se sei certo): " + "; ".join(processes))
     if args.dry_run:
         print(f"Dry-run completato: {len(files)} file EXD pronti per {args.target}.")
         print("Nessun backup e nessun file di gioco sono stati modificati.")
         return
+    processes = running_game_processes()
+    if processes and not args.force:
+        raise SystemExit("Chiudi il gioco/XIVLauncher prima dell'inject (usa --force solo se sei certo): " + "; ".join(processes))
     _notify(progress, 0.08, "Creo il backup di sicurezza…")
     backup = make_backup(project, game, files, sheets)
     print(f"Backup creato: {backup}")
     results = []
     _notify(progress, 0.15, f"Applico {len(sheets)} sheet EXD…")
-    for index, sheet in enumerate(sheets, 1):
-        result = engine.hard_inject_sqpack(sheet)
-        if "error" in result:
-            raise SystemExit(f"Inject {sheet}: {result['error']}\nIl backup resta disponibile per il ripristino.")
-        results.append(result)
-        changed = result.get("changed_pages", 0)
-        print(f"  inject {sheet}: {result.get('pages', 0)} pagine, differenze byte: {changed}")
-        _notify(progress, 0.15 + 0.82 * index / len(sheets), f"Applico {sheet} ({index}/{len(sheets)})")
+    try:
+        for index, sheet in enumerate(sheets, 1):
+            result = engine.hard_inject_sqpack(sheet)
+            if "error" in result:
+                raise RuntimeError(f"Inject {sheet}: {result['error']}")
+            results.append(result)
+            changed = result.get("changed_pages", 0)
+            print(f"  inject {sheet}: {result.get('pages', 0)} pagine, differenze byte: {changed}")
+            _notify(progress, 0.15 + 0.82 * index / len(sheets), f"Applico {sheet} ({index}/{len(sheets)})")
+    except BaseException as exc:
+        details = str(exc) or exc.__class__.__name__
+        try:
+            restore_backup(project, backup.name)
+        except BaseException as restore_exc:
+            raise SystemExit(
+                f"{details}\nInject interrotto, ma il ripristino automatico non è riuscito: {restore_exc}\n"
+                f"Backup disponibile: {backup}"
+            ) from exc
+        raise SystemExit(f"{details}\nInject annullato: il backup {backup.name} è stato ripristinato.") from exc
     report = {
         "installed_at": dt.datetime.now().isoformat(timespec="seconds"),
         "backup": str(backup),
