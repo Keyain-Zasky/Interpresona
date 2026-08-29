@@ -14,6 +14,10 @@ anche `install.bat` e `install.sh`. Avviandoli senza argomenti si apre la
 GUI guidata, che chiede il percorso di FFXIV, controlla la release, mostra il
 progresso dei download e propone installazione o ripristino con conferma.
 Sono accettati sia la cartella SQPACK/ffxiv sia la normale cartella di gioco.
+Prima del download e nuovamente prima dell'inject, l'installer legge
+`game/ffxivgame.ver` e lo confronta con la versione esatta dichiarata dalla
+release. Una patch differente o una release legacy senza questo dato viene
+bloccata, evitando di applicare EXD compilati per una versione diversa.
 
 La modalità testuale resta disponibile passando argomenti ai launcher oppure
 avviando direttamente `interpresona_installer.py`, utile per automazioni e

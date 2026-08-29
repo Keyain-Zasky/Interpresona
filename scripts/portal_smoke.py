@@ -81,6 +81,9 @@ def main() -> int:
             raise
         raise AssertionError(f"Il pacchetto installer non è uno ZIP valido: {error}") from error
     version = json.loads(request(base_url, "/api/v1/version").read().decode("utf-8"))
+    game_version = str(version.get("game_version") or "")
+    if not re.fullmatch(r"\d{4}\.\d{2}\.\d{2}\.\d{4}\.\d{4}", game_version):
+        raise AssertionError("Versione FFXIV esatta mancante o non valida nel portale.")
     for platform_name, package in (version.get("installer_packages") or {}).items():
         package_url = package.get("download_url")
         if not package_url or not package.get("sha256"):
@@ -107,6 +110,8 @@ def main() -> int:
             release = json.loads(archive.read("exd-manifest.json").decode("utf-8"))
             if not release.get("sheets") or archive.testzip() is not None:
                 raise AssertionError("Il pacchetto EXD non contiene una release valida.")
+            if release.get("game_version") != game_version:
+                raise AssertionError("La build FFXIV del pacchetto EXD non corrisponde al portale.")
     except Exception as error:
         if isinstance(error, AssertionError):
             raise

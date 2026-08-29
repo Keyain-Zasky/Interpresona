@@ -142,6 +142,7 @@ def main() -> int:
             "format": 1,
             "version": args.version or source_manifest.get("version"),
             "game_patch": args.game_patch or source_manifest.get("game_patch"),
+            "game_version": source_manifest.get("game_version") or engine.game_version(),
             "build_id": source_manifest.get("build_id"),
             "sheets": release_sheets,
         }

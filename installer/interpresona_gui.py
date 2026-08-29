@@ -37,11 +37,13 @@ from interpresona_installer import (
     check_game,
     download_archive,
     fetch_json,
+    game_version,
     install,
     installed_release,
     latest_backup,
     load_config,
     project_paths,
+    release_compatibility,
     resolve_game_path,
     restore_backup,
     save_config,
@@ -237,7 +239,8 @@ class InterpresonaGUI(tk.Tk):
             return None
         self.config_data["game_sqpack"] = str(game)
         save_config(self.config_path, self.config_data)
-        self.path_status.configure(text=f"SQPACK trovato: {game}")
+        detected = game_version(game)
+        self.path_status.configure(text=f"SQPACK trovato · FFXIV {detected}" if detected else "SQPACK trovato, ma ffxivgame.ver non è leggibile.")
         return game
 
     def _set_busy(self, busy: bool) -> None:
@@ -301,13 +304,22 @@ class InterpresonaGUI(tk.Tk):
             remote_id = (remote.get("build_id"), remote.get("version"))
             local_source = local.get("source_manifest", local)
             update = remote_id != (local_source.get("build_id"), local_source.get("version"))
+            compatibility = release_compatibility(game, remote)
             label = f"Release {remote.get('version', 'n/d')} · patch {remote.get('game_patch', 'n/d')} · {remote.get('total_files', '?')} CSV"
-            self.release_label.configure(text=label + (" · aggiornamento disponibile" if update else " · già aggiornata"))
+            if compatibility["compatible"]:
+                state = "aggiornamento disponibile" if update else "già aggiornata"
+                self.release_label.configure(text=f"{label} · FFXIV {compatibility['installed_game_version']} compatibile · {state}", fg=self.colors["green"])
+                self.update_button.configure(state="normal")
+                self.apply_button.configure(state="normal")
+            else:
+                self.release_label.configure(text=f"{label}\n⚠ {compatibility['message']}", fg=self.colors["red"])
+                self.update_button.configure(state="disabled")
+                self.apply_button.configure(state="disabled")
             native = (remote.get("installer_packages") or {}).get(installer_platform_key())
             remote_app = (native or {}).get("version") or remote.get("installer_version") or remote.get("version")
             suffix = " · pacchetto nativo disponibile" if native else " · pacchetto portatile"
             self.app_status.configure(text=f"Software: {APP_VERSION} · disponibile: {remote_app or 'n/d'}{suffix}")
-            self.write_log("Controllo completato: " + label)
+            self.write_log("Controllo completato: " + label + " · " + compatibility["message"])
 
         self._run("Controllo del portale…", operation, done)
 

@@ -43,7 +43,7 @@ PROJECT_DIR = Path.home() / "Interpresona"
 DEFAULT_CONFIG = Path.home() / ".config" / "interpresona" / "config.json"
 DEFAULT_API = "https://ffxiv.paolozzi.me/api/v1"
 INSTALLED_RELEASE_FILENAME = "release-manifest.json"
-APP_VERSION = "0.4.3"
+APP_VERSION = "0.5.0"
 
 # The public package carries only the engine and its catalog. Runtime data is
 # kept in a user-writable directory instead of beside the downloaded script.
@@ -208,6 +208,55 @@ def check_game(game: Path) -> None:
             f"SQPACK non trovato in {game}. Seleziona la cartella che contiene "
             "0a0000.win32.index, non la cartella game/ generica."
         )
+
+
+def game_version(game: Path) -> str:
+    """Read Square Enix's exact build marker for the selected installation."""
+    candidates = (
+        game / "ffxivgame.ver",
+        game.parent / "ffxivgame.ver",
+        game.parent.parent / "ffxivgame.ver",
+    )
+    for path in candidates:
+        try:
+            value = path.read_text(encoding="ascii").strip("\x00\r\n ")
+        except (OSError, UnicodeError):
+            continue
+        if value:
+            return value
+    return ""
+
+
+def release_compatibility(game: Path, release: dict) -> dict:
+    """Compare exact installed and release builds without guessing from labels."""
+    installed = game_version(game)
+    required = str(release.get("game_version") or "").strip()
+    if not installed:
+        state = "game-version-missing"
+        message = "Impossibile leggere ffxivgame.ver dall'installazione selezionata."
+    elif not required:
+        state = "release-version-missing"
+        message = "La release non dichiara la versione esatta di FFXIV e non può essere applicata in sicurezza."
+    elif installed != required:
+        state = "mismatch"
+        message = f"Release incompatibile: richiede FFXIV {required}, installazione rilevata {installed}."
+    else:
+        state = "compatible"
+        message = f"Compatibile con FFXIV {installed}."
+    return {
+        "compatible": state == "compatible",
+        "state": state,
+        "installed_game_version": installed,
+        "required_game_version": required,
+        "message": message,
+    }
+
+
+def ensure_release_compatible(game: Path, release: dict) -> dict:
+    result = release_compatibility(game, release)
+    if not result["compatible"]:
+        raise SystemExit(result["message"])
+    return result
 
 
 def resolve_game_path(value: str | Path) -> Path:
@@ -403,6 +452,9 @@ def download_archive(url: str, expected_hash: str, directory: Path, label: str, 
 def update_csv_from_server(config: dict, manifest: dict, progress=None) -> dict:
     """Compatibility fallback for servers that have not published EXD yet."""
     _, workspace, _ = project_paths(config)
+    game = resolve_game_path(config.get("game_sqpack", ""))
+    check_game(game)
+    ensure_release_compatible(game, manifest)
     api = str(config.get("distribution_api", DEFAULT_API)).rstrip("/")
     package = manifest.get("zip_package") or {}
     download = api_url(api, str(package.get("download_url") or "/api/v1/download/latest"))
@@ -436,6 +488,7 @@ def update_csv_from_server(config: dict, manifest: dict, progress=None) -> dict:
 def update_exd_from_server(config: dict, manifest: dict, progress=None) -> dict:
     project, _, compiled, game = configure_engine(config)
     check_game(game)
+    ensure_release_compatible(game, manifest)
     api = str(config.get("distribution_api", DEFAULT_API)).rstrip("/")
     package = manifest.get("exd_package") or {}
     download = api_url(api, str(package.get("download_url") or "/api/v1/download/latest-exd"))
@@ -456,8 +509,11 @@ def update_exd_from_server(config: dict, manifest: dict, progress=None) -> dict:
                 if "exd-manifest.json" not in names:
                     raise SystemExit("Pacchetto EXD privo di exd-manifest.json.")
                 release = json.loads(bundle.read("exd-manifest.json").decode("utf-8"))
-                if release.get("version") != manifest.get("version") or release.get("game_patch") != manifest.get("game_patch"):
-                    raise SystemExit("Versione o patch del pacchetto EXD non corrispondente al manifest.")
+                if (release.get("version") != manifest.get("version")
+                        or release.get("game_patch") != manifest.get("game_patch")
+                        or release.get("game_version") != manifest.get("game_version")):
+                    raise SystemExit("Versione, patch o build FFXIV del pacchetto EXD non corrispondente al manifest.")
+                ensure_release_compatible(game, release)
                 sheets = release.get("sheets")
                 if not isinstance(sheets, dict) or not sheets:
                     raise SystemExit("Manifest EXD senza sheet installabili.")
@@ -529,16 +585,23 @@ def update_from_server(config: dict, progress=None) -> dict:
 
 def show_update_status(config: dict) -> None:
     project, _, compiled = project_paths(config)
+    game = resolve_game_path(config.get("game_sqpack", ""))
+    check_game(game)
     api = str(config.get("distribution_api", DEFAULT_API)).rstrip("/")
     remote = fetch_json(f"{api}/manifest")
     local = installed_release(compiled)
     remote_id = (remote.get("build_id"), remote.get("version"))
     local_source = local.get("source_manifest", local)
     local_id = (local_source.get("build_id"), local_source.get("version"))
+    compatibility = release_compatibility(game, remote)
     print(json.dumps({
         "project": str(project),
         "remote_version": remote.get("version"),
         "remote_patch": remote.get("game_patch"),
+        "required_game_version": compatibility["required_game_version"],
+        "installed_game_version": compatibility["installed_game_version"],
+        "game_compatible": compatibility["compatible"],
+        "compatibility_status": compatibility["message"],
         "remote_build_id": remote.get("build_id"),
         "installed_version": local_source.get("version"),
         "installed_build_id": local_source.get("build_id"),
@@ -571,6 +634,11 @@ def install(args: argparse.Namespace, config: dict, config_path: Path, progress=
     source = args.source or config.get("translation_source", "exd")
     if source not in {"exd", "csv"}:
         raise SystemExit("--source deve essere exd oppure csv")
+    if source == "exd":
+        release = installed_release(compiled)
+        if not release:
+            raise SystemExit("Manifest della release EXD mancante. Scarica nuovamente la traduzione.")
+        ensure_release_compatible(game, release.get("source_manifest", release))
     if args.all and source == "exd":
         release = installed_release(compiled)
         release_names = list((release.get("sheets") or {}).keys())
@@ -707,7 +775,7 @@ def main() -> int:
     if args.command == "status":
         project, workspace, compiled, game = configure_engine(config)
         test_dir = absolute(config["test_dir"]) if config.get("test_dir") else None
-        print(json.dumps({"config": str(config_path), "game_sqpack": str(game), "game_ok": (game / "0a0000.win32.index").is_file(), "test_sqpack": str(test_dir) if test_dir else "", "test_ok": bool(test_dir and (test_dir / "0a0000.win32.index").is_file()), "project": str(project), "workspace": str(workspace), "compiled_exd": str(compiled), "csv_count": len(list(workspace.glob("*.csv"))), "compiled_count": len(list(compiled.glob("*.exd")))}, indent=2, ensure_ascii=False))
+        print(json.dumps({"config": str(config_path), "game_sqpack": str(game), "game_ok": (game / "0a0000.win32.index").is_file(), "game_version": game_version(game), "test_sqpack": str(test_dir) if test_dir else "", "test_ok": bool(test_dir and (test_dir / "0a0000.win32.index").is_file()), "project": str(project), "workspace": str(workspace), "compiled_exd": str(compiled), "csv_count": len(list(workspace.glob("*.csv"))), "compiled_count": len(list(compiled.glob("*.exd")))}, indent=2, ensure_ascii=False))
         return 0
     install(args, config, config_path)
     return 0
