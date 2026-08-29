@@ -36,6 +36,11 @@ direttamente quell’ambiente locale.
 
 Uso dell'installer:
 
+L'installer 0.5.0 confronta il valore esatto di `game/ffxivgame.ver` con
+`game_version` nel manifest pubblico prima del download e nuovamente prima
+dell'inject. Release legacy senza questo contratto e build differenti vengono
+bloccate; l'etichetta leggibile della patch resta soltanto informativa.
+
 ```sh
 ./installer/install.sh configure --game "/percorso/sqpack/ffxiv" --project "$PWD"
 ./installer/install.sh update --check
