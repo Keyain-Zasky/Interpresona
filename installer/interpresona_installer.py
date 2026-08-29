@@ -109,6 +109,14 @@ def installed_release(compiled: Path) -> dict:
         return {}
 
 
+def source_manifest_metadata(manifest: dict) -> dict:
+    """Persist the identity and exact game contract of a downloaded release."""
+    return {
+        key: manifest.get(key)
+        for key in ("version", "game_patch", "game_version", "build_id", "last_updated")
+    }
+
+
 def latest_backup(project: Path) -> Path | None:
     root = project / "backups"
     candidates = sorted((item for item in root.iterdir() if item.is_dir()), reverse=True) if root.is_dir() else []
@@ -567,7 +575,7 @@ def update_exd_from_server(config: dict, manifest: dict, progress=None) -> dict:
             (compiled / f"{sheet}.manifest.json").write_text(json.dumps({"files": files}, indent=2) + "\n", encoding="utf-8")
         installed = dict(release)
         installed["installed_at"] = dt.datetime.now().isoformat(timespec="seconds")
-        installed["source_manifest"] = {key: manifest.get(key) for key in ("version", "game_patch", "build_id", "last_updated")}
+        installed["source_manifest"] = source_manifest_metadata(manifest)
         (compiled / INSTALLED_RELEASE_FILENAME).write_text(json.dumps(installed, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     _notify(progress, 1.0, f"Release EXD pronta: {len(release['sheets'])} sheet")
     print(f"Release EXD scaricata: {len(release['sheets'])} sheet, patch {manifest.get('game_patch', 'n/d')}")

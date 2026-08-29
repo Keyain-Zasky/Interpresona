@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from interpresona_installer import game_version, release_compatibility
+from interpresona_installer import game_version, release_compatibility, source_manifest_metadata
 
 
 class GameVersionCompatibilityTests(unittest.TestCase):
@@ -43,6 +43,17 @@ class GameVersionCompatibilityTests(unittest.TestCase):
         result = release_compatibility(game, {"game_version": "2026.08.11.0000.0000"})
         self.assertFalse(result["compatible"])
         self.assertEqual(result["state"], "game-version-missing")
+
+    def test_downloaded_source_manifest_keeps_exact_version_contract(self):
+        remote = {
+            "version": "0.48",
+            "game_patch": "7.55 Dawntrail Update",
+            "game_version": "2026.08.11.0000.0000",
+            "build_id": 123,
+            "last_updated": "2026-08-29T00:00:00+00:00",
+        }
+        copied = source_manifest_metadata(remote)
+        self.assertEqual(copied["game_version"], remote["game_version"])
 
 
 if __name__ == "__main__":
