@@ -28,6 +28,7 @@ DEFAULT_SQPACK_DIR = os.path.join(os.path.expanduser("~"), "Games", "Steam", "FI
 # possono comunque sovrascriverla per un ambiente di test separato.
 DEFAULT_CSV_SOURCE_DIR = os.path.join(os.path.expanduser("~"), "FFXIV-Zero-Error-Translator", "data", "csv", "current")
 DEFAULT_WORKSPACE_DIR = os.path.join(RUNTIME_DIR, "workspace")
+DEFAULT_EXPORT_DIR = os.path.join(PROJECT_DIR, "export")
 DEFAULT_EXD_DIR = os.path.join(RUNTIME_DIR, "exd")
 CATALOG_FILE = os.path.abspath(os.environ.get("INTERPRESONA_ENGINE_CATALOG_FILE", os.path.join(PROJECT_DIR, "app", "ffxiv_sheets.txt")))
 BUILTIN_SHEETS = ("addon", "lobby", "item", "quest", "eventtext", "weather", "customtalk")
@@ -49,41 +50,52 @@ def _read_settings():
 _saved_settings = _read_settings()
 SQPACK_DIR = _saved_settings.get("sqpack_dir", DEFAULT_SQPACK_DIR)
 CSV_SOURCE_DIR = _saved_settings.get("csv_source_dir", DEFAULT_CSV_SOURCE_DIR)
-WORKSPACE_DIR = _saved_settings.get("workspace_dir", DEFAULT_WORKSPACE_DIR)
+configured_workspace = _saved_settings.get("workspace_dir", DEFAULT_WORKSPACE_DIR)
+if "export_dir" not in _saved_settings and os.path.basename(os.path.normpath(configured_workspace)).lower() == "export":
+    EXPORT_DIR = configured_workspace
+    WORKSPACE_DIR = DEFAULT_WORKSPACE_DIR
+else:
+    EXPORT_DIR = _saved_settings.get("export_dir", DEFAULT_EXPORT_DIR)
+    WORKSPACE_DIR = configured_workspace
 EXD_DIR = _saved_settings.get("exd_dir", DEFAULT_EXD_DIR)
 INDEX_PATH = os.path.join(SQPACK_DIR, "0a0000.win32.index")
 CATALOG_DIRS = tuple(dict.fromkeys((CSV_SOURCE_DIR, WORKSPACE_DIR)))
 os.makedirs(WORKSPACE_DIR, exist_ok=True)
+os.makedirs(EXPORT_DIR, exist_ok=True)
 os.makedirs(EXD_DIR, exist_ok=True)
 
 
 def settings_snapshot():
     return {"sqpack_dir": SQPACK_DIR, "csv_source_dir": CSV_SOURCE_DIR,
-            "workspace_dir": WORKSPACE_DIR, "exd_dir": EXD_DIR,
+            "workspace_dir": WORKSPACE_DIR, "export_dir": EXPORT_DIR, "exd_dir": EXD_DIR,
             "sqpack_ok": os.path.exists(INDEX_PATH),
             "csv_source_ok": os.path.isdir(CSV_SOURCE_DIR),
             "workspace_ok": os.path.isdir(WORKSPACE_DIR),
+            "export_ok": os.path.isdir(EXPORT_DIR) and os.access(EXPORT_DIR, os.W_OK),
             "exd_ok": os.path.isdir(EXD_DIR) and os.access(EXD_DIR, os.W_OK)}
 
 
 def apply_settings(values):
-    global SQPACK_DIR, INDEX_PATH, CSV_SOURCE_DIR, WORKSPACE_DIR, EXD_DIR, CATALOG_DIRS, _SHEET_CATALOG_CACHE
+    global SQPACK_DIR, INDEX_PATH, CSV_SOURCE_DIR, WORKSPACE_DIR, EXPORT_DIR, EXD_DIR, CATALOG_DIRS, _SHEET_CATALOG_CACHE
     sqpack = os.path.abspath(os.path.expanduser(str(values.get("sqpack_dir", SQPACK_DIR)).strip()))
     csv_source = os.path.abspath(os.path.expanduser(str(values.get("csv_source_dir", CSV_SOURCE_DIR)).strip()))
     workspace = os.path.abspath(os.path.expanduser(str(values.get("workspace_dir", WORKSPACE_DIR)).strip()))
+    export = os.path.abspath(os.path.expanduser(str(values.get("export_dir", EXPORT_DIR)).strip()))
     exd = os.path.abspath(os.path.expanduser(str(values.get("exd_dir", EXD_DIR)).strip()))
-    if not sqpack or not csv_source or not workspace or not exd:
+    if not sqpack or not csv_source or not workspace or not export or not exd:
         raise ValueError("Tutti i percorsi sono obbligatori.")
     os.makedirs(workspace, exist_ok=True)
+    os.makedirs(export, exist_ok=True)
     os.makedirs(exd, exist_ok=True)
-    SQPACK_DIR, CSV_SOURCE_DIR, WORKSPACE_DIR, EXD_DIR = sqpack, csv_source, workspace, exd
+    SQPACK_DIR, CSV_SOURCE_DIR, WORKSPACE_DIR, EXPORT_DIR, EXD_DIR = sqpack, csv_source, workspace, export, exd
     INDEX_PATH = os.path.join(SQPACK_DIR, "0a0000.win32.index")
     CATALOG_DIRS = tuple(dict.fromkeys((CSV_SOURCE_DIR, WORKSPACE_DIR)))
     _SHEET_CATALOG_CACHE = None
     os.makedirs(os.path.dirname(USER_SETTINGS_PATH), exist_ok=True)
     with open(USER_SETTINGS_PATH, "w", encoding="utf-8") as handle:
         json.dump({"sqpack_dir": SQPACK_DIR, "csv_source_dir": CSV_SOURCE_DIR,
-                   "workspace_dir": WORKSPACE_DIR, "exd_dir": EXD_DIR}, handle, indent=2)
+                   "workspace_dir": WORKSPACE_DIR, "export_dir": EXPORT_DIR,
+                   "exd_dir": EXD_DIR}, handle, indent=2)
     return settings_snapshot()
 
 FOLDER_HASH = binascii.crc32(b"exd") ^ 0xFFFFFFFF
@@ -427,13 +439,13 @@ def export_exh(exh_name):
                     rows.append(values)
                     meta.append({"file": file_name, "row_id": record["row_id"],
                                  "sub_id": sub["sub_id"], "fixed": sub["fixed"].hex().upper()})
-        with open(os.path.join(WORKSPACE_DIR, f"{name}.csv"), "w", newline="", encoding="utf-8") as f:
+        with open(os.path.join(EXPORT_DIR, f"{name}.csv"), "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             header = ["RowID"] + (["SubrowID"] if schema["variant"] == 2 else []) + [f"Col_{i}" for i in range(schema["column_count"])]
             writer.writerow(header); writer.writerows(rows)
-        with open(get_tags_dict_path(name), "w") as f: json.dump(tags, f, indent=2)
-        with open(get_meta_path(name), "w") as f: json.dump({"schema": schema, "rows": meta}, f, indent=2)
-        return {"success": True, "rows": len(rows), "tags": len(tags), "file": os.path.join(WORKSPACE_DIR, f"{name}.csv"), "pages": len(pages), "variant": schema["variant"]}
+        with open(os.path.join(EXPORT_DIR, f"{name}_tags.json"), "w") as f: json.dump(tags, f, indent=2)
+        with open(os.path.join(EXPORT_DIR, f"{name}_meta.json"), "w") as f: json.dump({"schema": schema, "rows": meta}, f, indent=2)
+        return {"success": True, "rows": len(rows), "tags": len(tags), "file": os.path.join(EXPORT_DIR, f"{name}.csv"), "pages": len(pages), "variant": schema["variant"]}
     except (ValueError, struct.error, OSError) as exc:
         return {"error": f"Errore EXH/EXD durante l'estrazione: {exc}"}
 

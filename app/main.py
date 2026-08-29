@@ -62,6 +62,7 @@ class SettingsRequest(BaseModel):
     sqpack_dir: str
     csv_source_dir: str
     workspace_dir: str
+    export_dir: str
     exd_dir: str
 
 
@@ -336,9 +337,11 @@ def api_status():
             "runtime_ok": settings["exd_ok"],
             "csv_source_ok": settings["csv_source_ok"],
             "workspace_ok": settings["workspace_ok"],
+            "export_ok": settings["export_ok"],
             "exd_ok": settings["exd_ok"],
             "csv_source": ffxiv_engine.CSV_SOURCE_DIR,
             "workspace": ffxiv_engine.WORKSPACE_DIR,
+            "export": ffxiv_engine.EXPORT_DIR,
             "exd": ffxiv_engine.EXD_DIR}
 
 
@@ -367,11 +370,13 @@ def api_import_csv_folder():
             stem = _validate_source_name(os.path.basename(path))
             destination = os.path.join(ffxiv_engine.WORKSPACE_DIR, stem + ".csv")
             import shutil
-            shutil.copy2(path, destination)
+            if os.path.abspath(path) != os.path.abspath(destination):
+                shutil.copy2(path, destination)
             for suffix in ("_tags.json", "_meta.json"):
                 sidecar = os.path.join(source, stem + suffix)
-                if os.path.isfile(sidecar):
-                    shutil.copy2(sidecar, os.path.join(ffxiv_engine.WORKSPACE_DIR, stem + suffix))
+                target_sidecar = os.path.join(ffxiv_engine.WORKSPACE_DIR, stem + suffix)
+                if os.path.isfile(sidecar) and os.path.abspath(sidecar) != os.path.abspath(target_sidecar):
+                    shutil.copy2(sidecar, target_sidecar)
             imported.append(stem)
         except HTTPException as exc:
             errors.append({"filename": os.path.basename(path), "error": exc.detail})

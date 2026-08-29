@@ -69,6 +69,7 @@ async function loadSettings() {
         document.getElementById('settings-sqpack').value = data.sqpack_dir || '';
         document.getElementById('settings-csv').value = data.csv_source_dir || '';
         document.getElementById('settings-workspace').value = data.workspace_dir || '';
+        document.getElementById('settings-export').value = data.export_dir || '';
         document.getElementById('settings-exd').value = data.exd_dir || '';
         updateSettingsCheck(data);
     } catch (_) { showToast('Impossibile caricare le impostazioni.', 'error'); }
@@ -77,7 +78,7 @@ async function loadSettings() {
 function updateSettingsCheck(data) {
     const check = document.getElementById('settings-check');
     if (!check) return;
-    const ready = data.sqpack_ok && data.csv_source_ok && data.workspace_ok && data.exd_ok;
+    const ready = data.sqpack_ok && data.csv_source_ok && data.workspace_ok && data.export_ok && data.exd_ok;
     check.className = `settings-check ${ready ? 'valid' : 'invalid'}`;
     check.textContent = ready ? '✓ SQPACK, CSV, workspace ed EXD sono accessibili.' : '! Uno o più percorsi non sono accessibili o scrivibili.';
 }
@@ -87,6 +88,7 @@ async function saveSettings() {
         sqpack_dir: document.getElementById('settings-sqpack').value.trim(),
         csv_source_dir: document.getElementById('settings-csv').value.trim(),
         workspace_dir: document.getElementById('settings-workspace').value.trim(),
+        export_dir: document.getElementById('settings-export').value.trim(),
         exd_dir: document.getElementById('settings-exd').value.trim()
     };
     try {
