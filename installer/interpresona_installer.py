@@ -199,6 +199,9 @@ def stage_native_application_update(archive: Path, version: str) -> Path:
 def configure_engine(config: dict) -> tuple[Path, Path, Path, Path]:
     project, workspace, compiled = project_paths(config)
     game = absolute(config["game_sqpack"])
+    # The public installer and the Admin Studio may coexist on the same PC.
+    # Never let engine.apply_settings overwrite the Studio's global settings.
+    engine.USER_SETTINGS_PATH = str(project / "engine-settings.json")
     csv_source = workspace
     engine.apply_settings({
         "sqpack_dir": str(game),
