@@ -2,7 +2,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from interpresona_installer import game_version, release_compatibility, source_manifest_metadata
+from interpresona_installer import (
+    game_version,
+    release_compatibility,
+    selected_sheets,
+    source_manifest_metadata,
+    valid_release_exd_path,
+)
 
 
 class GameVersionCompatibilityTests(unittest.TestCase):
@@ -54,6 +60,18 @@ class GameVersionCompatibilityTests(unittest.TestCase):
         }
         copied = source_manifest_metadata(remote)
         self.assertEqual(copied["game_version"], remote["game_version"])
+
+    def test_hierarchical_sheet_name_is_preserved(self):
+        self.assertEqual(
+            selected_sheets(["custom/003/jobdefdrk_00300.csv"], False),
+            ["custom/003/jobdefdrk_00300"],
+        )
+
+    def test_hierarchical_exd_path_is_valid_for_its_sheet(self):
+        sheet = "custom/003/jobdefdrk_00300"
+        self.assertTrue(valid_release_exd_path(sheet, sheet + "_0_en.exd"))
+        self.assertFalse(valid_release_exd_path(sheet, "../jobdefdrk_00300_0_en.exd"))
+        self.assertFalse(valid_release_exd_path(sheet, "custom/003/other_0_en.exd"))
 
 
 if __name__ == "__main__":

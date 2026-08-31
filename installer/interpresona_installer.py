@@ -14,6 +14,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import shutil
 import ssl
 import struct
@@ -43,7 +44,9 @@ PROJECT_DIR = Path.home() / "Interpresona"
 DEFAULT_CONFIG = Path.home() / ".config" / "interpresona" / "config.json"
 DEFAULT_API = "https://ffxiv.paolozzi.me/api/v1"
 INSTALLED_RELEASE_FILENAME = "release-manifest.json"
-APP_VERSION = "0.5.0"
+APP_VERSION = "0.5.1"
+SHEET_NAME_RE = re.compile(r"^[a-z0-9_]+(?:/[a-z0-9_]+)*$")
+EXD_FILE_RE = re.compile(r"^[a-z0-9_]+(?:/[a-z0-9_]+)*\.exd$")
 
 # The public package carries only the engine and its catalog. Runtime data is
 # kept in a user-writable directory instead of beside the downloaded script.
@@ -308,12 +311,25 @@ def selected_sheets(requested: list[str] | None, all_sheets: bool) -> list[str]:
         names = requested or []
     result: list[str] = []
     for value in names:
-        name = Path(value).stem.lower()
+        name = str(value).strip().replace("\\", "/").strip("/").lower()
+        for suffix in (".exh", ".csv"):
+            if name.endswith(suffix):
+                name = name[:-len(suffix)]
+                break
+        if not SHEET_NAME_RE.fullmatch(name):
+            raise SystemExit(f"Nome sheet non valido: {value}")
         if name not in result:
             result.append(name)
     if not result:
         raise SystemExit("Indica almeno un EXH oppure usa --all.")
     return result
+
+
+def valid_release_exd_path(sheet: str, file_name: object) -> bool:
+    """Accept canonical SQPACK paths while rejecting traversal and cross-sheet files."""
+    return (isinstance(file_name, str)
+            and EXD_FILE_RE.fullmatch(file_name) is not None
+            and file_name.startswith(sheet + "_"))
 
 
 def manifest_files(compiled: Path, sheet: str) -> list[str]:
@@ -338,14 +354,18 @@ def make_backup(project: Path, game: Path, files: list[str], sheets: list[str]) 
     backup.mkdir(parents=True, exist_ok=False)
     copied: list[str] = []
     checksums: dict[str, str] = {}
-    targets = [game / "0a0000.win32.index", game / "0a0000.win32.index2"]
-    dat_indices: set[int] = set()
+    targets: list[Path] = []
     for file_name in files:
         target = engine._index_entry(file_name)
         if target is not None:
-            dat_indices.add(int(target[1]))
-    targets.extend(game / f"0a0000.win32.dat{index}" for index in sorted(dat_indices))
-    for source in targets:
+            index_path, _, dat_index, _ = target
+            index = Path(index_path)
+            targets.extend((
+                index,
+                Path(str(index).replace(".index", ".index2")),
+                Path(engine._dat_path(index_path, int(dat_index))),
+            ))
+    for source in dict.fromkeys(targets):
         if source.is_file():
             destination = backup / source.name
             shutil.copy2(source, destination)
@@ -530,7 +550,8 @@ def update_exd_from_server(config: dict, manifest: dict, progress=None) -> dict:
                     raise SystemExit("Manifest EXD senza sheet installabili.")
                 staged = tmp / "staged"
                 for sheet, metadata in sheets.items():
-                    if not isinstance(sheet, str) or not sheet or not isinstance(metadata, dict):
+                    if (not isinstance(sheet, str) or not SHEET_NAME_RE.fullmatch(sheet)
+                            or not isinstance(metadata, dict)):
                         raise SystemExit("Manifest EXD non valido.")
                     files = metadata.get("files", [])
                     hashes = metadata.get("sha256", {})
@@ -543,6 +564,8 @@ def update_exd_from_server(config: dict, manifest: dict, progress=None) -> dict:
                             f"Release EXD incompatibile con il catalogo locale per {sheet}: {exc}"
                         ) from exc
                     for file_name in files:
+                        if not valid_release_exd_path(sheet, file_name):
+                            raise SystemExit(f"Percorso EXD non valido per {sheet}: {file_name}")
                         member = safe_zip_member(f"exd/{file_name}")
                         if member not in names:
                             raise SystemExit(f"EXD mancante nel pacchetto: {file_name}")
@@ -570,12 +593,36 @@ def update_exd_from_server(config: dict, manifest: dict, progress=None) -> dict:
         compiled.mkdir(parents=True, exist_ok=True)
         for sheet, metadata in release["sheets"].items():
             files = [str(item) for item in metadata["files"]]
+            schema_raw = engine.read_file(f"{sheet}.exh")
+            if not schema_raw:
+                raise SystemExit(f"Schema EXH non leggibile durante la preparazione: {sheet}")
+            source_hashes: dict[str, str] = {}
+            output_hashes: dict[str, str] = {}
             for file_name in files:
                 source = staged / file_name
-                if engine._index_entry(file_name) is None:
+                original = engine.read_file(file_name)
+                if original is None or engine._index_entry(file_name) is None:
                     raise SystemExit(f"EXD non compatibile con l'indice locale: {file_name}")
-                shutil.copy2(source, compiled / file_name)
-            (compiled / f"{sheet}.manifest.json").write_text(json.dumps({"files": files}, indent=2) + "\n", encoding="utf-8")
+                destination = compiled / file_name
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, destination)
+                source_hashes[file_name] = hashlib.sha256(original).hexdigest()
+                output_hashes[file_name] = hashlib.sha256(source.read_bytes()).hexdigest()
+            manifest_path = compiled / f"{sheet}.manifest.json"
+            manifest_path.parent.mkdir(parents=True, exist_ok=True)
+            compiled_manifest = {
+                "format": 2,
+                "sheet": sheet,
+                "game_version": str(release.get("game_version") or ""),
+                "schema_sha256": hashlib.sha256(schema_raw).hexdigest(),
+                "files": files,
+                "source_sha256": source_hashes,
+                "output_sha256": output_hashes,
+            }
+            manifest_path.write_text(
+                json.dumps(compiled_manifest, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
         installed = dict(release)
         installed["installed_at"] = dt.datetime.now().isoformat(timespec="seconds")
         installed["source_manifest"] = source_manifest_metadata(manifest)
