@@ -44,7 +44,7 @@ PROJECT_DIR = Path.home() / "Interpresona"
 DEFAULT_CONFIG = Path.home() / ".config" / "interpresona" / "config.json"
 DEFAULT_API = "https://ffxiv.paolozzi.me/api/v1"
 INSTALLED_RELEASE_FILENAME = "release-manifest.json"
-APP_VERSION = "0.5.1"
+APP_VERSION = "0.5.2"
 SHEET_NAME_RE = re.compile(r"^[a-z0-9_]+(?:/[a-z0-9_]+)*$")
 EXD_FILE_RE = re.compile(r"^[a-z0-9_]+(?:/[a-z0-9_]+)*\.exd$")
 
@@ -549,6 +549,7 @@ def update_exd_from_server(config: dict, manifest: dict, progress=None) -> dict:
                 if not isinstance(sheets, dict) or not sheets:
                     raise SystemExit("Manifest EXD senza sheet installabili.")
                 staged = tmp / "staged"
+                normalized_technical: list[str] = []
                 for sheet, metadata in sheets.items():
                     if (not isinstance(sheet, str) or not SHEET_NAME_RE.fullmatch(sheet)
                             or not isinstance(metadata, dict)):
@@ -582,6 +583,16 @@ def update_exd_from_server(config: dict, manifest: dict, progress=None) -> dict:
                             engine._row_records(data, schema)
                         except (ValueError, TypeError, struct.error) as exc:
                             raise SystemExit(f"EXD non valido o non compatibile: {file_name}: {exc}") from exc
+                        try:
+                            normalized = engine.enforce_forced_technical_strings(sheet, file_name, data)
+                            engine._row_records(normalized, schema)
+                        except (ValueError, TypeError, struct.error) as exc:
+                            raise SystemExit(
+                                f"Protezione dei campi tecnici non riuscita per {file_name}: {exc}"
+                            ) from exc
+                        if normalized != data:
+                            normalized_technical.append(file_name)
+                        data = normalized
                         destination = staged / file_name
                         destination.parent.mkdir(parents=True, exist_ok=True)
                         destination.write_bytes(data)
@@ -628,6 +639,8 @@ def update_exd_from_server(config: dict, manifest: dict, progress=None) -> dict:
         installed["source_manifest"] = source_manifest_metadata(manifest)
         (compiled / INSTALLED_RELEASE_FILENAME).write_text(json.dumps(installed, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     _notify(progress, 1.0, f"Release EXD pronta: {len(release['sheets'])} sheet")
+    if normalized_technical:
+        print("Campi tecnici ripristinati automaticamente in: " + ", ".join(normalized_technical))
     print(f"Release EXD scaricata: {len(release['sheets'])} sheet, patch {manifest.get('game_patch', 'n/d')}")
     return manifest
 

@@ -6,7 +6,7 @@ on:
       installer_version:
         description: "Versione dell'installer da pubblicare"
         required: false
-        default: "0.5.1"
+        default: "0.5.2"
   push:
     tags: ["v*.*.*"]
 

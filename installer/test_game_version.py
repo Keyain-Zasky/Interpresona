@@ -1,8 +1,11 @@
 import tempfile
 import unittest
+import struct
 from pathlib import Path
+from unittest import mock
 
 from interpresona_installer import (
+    engine,
     game_version,
     release_compatibility,
     selected_sheets,
@@ -72,6 +75,39 @@ class GameVersionCompatibilityTests(unittest.TestCase):
         self.assertTrue(valid_release_exd_path(sheet, sheet + "_0_en.exd"))
         self.assertFalse(valid_release_exd_path(sheet, "../jobdefdrk_00300_0_en.exd"))
         self.assertFalse(valid_release_exd_path(sheet, "custom/003/other_0_en.exd"))
+
+    def test_forced_technical_string_replaces_only_runtime_identifier(self):
+        schema = {
+            "columns": [(0, 0)],
+            "row_size": 4,
+            "variant": 1,
+            "pages": [(0, 1)],
+        }
+        string_pool = b"Tradotto\x00"
+        fixed = struct.pack(">I", 0)
+        padding = bytes((4 - ((2 + len(fixed) + len(string_pool)) % 4)) % 4)
+        payload = fixed + string_pool + padding
+        row = struct.pack(">IH", len(payload), 1) + payload
+        raw = (
+            b"EXDF\x00\x02\x00\x00"
+            + struct.pack(">II", 8, len(row))
+            + bytes(16)
+            + struct.pack(">II", 1, 40)
+            + row
+        )
+        canonical = {(1, None, 0): "Canonical"}
+        with (
+            mock.patch.dict(engine.FORCED_TECHNICAL_STRING_COLUMNS, {"test": frozenset({0})}, clear=True),
+            mock.patch.object(engine, "read_file", return_value=b"EXHF"),
+            mock.patch.object(engine, "parse_exh", return_value=schema),
+            mock.patch.object(engine, "_detect_technical_string_columns", return_value=(frozenset({0}), canonical)),
+        ):
+            normalized = engine.enforce_forced_technical_strings("test", "test_0_en.exd", raw)
+        record = engine._row_records(normalized, schema)[0]
+        value = engine._raw_string(
+            normalized, record, record["subs"][0]["fixed"], schema["columns"], 0
+        )
+        self.assertEqual(value, b"Canonical\x00")
 
 
 if __name__ == "__main__":

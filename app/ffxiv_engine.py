@@ -49,6 +49,13 @@ _TECHNICAL_COLUMN_CACHE = {}
 _INDEX_CACHE_SIGNATURE = None
 _INDEX_CACHE_CHECKED_AT = 0.0
 
+# These columns are runtime identifiers even though their values look like
+# ordinary lore terms.  They must never follow the Italian localisation.
+FORCED_TECHNICAL_STRING_COLUMNS = {
+    "aetheryte": frozenset({17}),
+    "transport/aetheryte": frozenset({0}),
+}
+
 
 def _read_settings():
     for path in (USER_SETTINGS_PATH, SETTINGS_PATH, RUNTIME_SETTINGS_PATH):
@@ -866,7 +873,7 @@ def _detect_technical_string_columns(name, schema):
                     item["identifiers"] += 1
                 if b"\x02" not in raw:
                     canonical[(key[0], key[1], col_index)] = text
-    protected = set()
+    protected = set(FORCED_TECHNICAL_STRING_COLUMNS.get(name, ()))
     for col_index, item in stats.items():
         if _is_technical_column_stats(item):
             protected.add(col_index)
@@ -877,6 +884,42 @@ def _detect_technical_string_columns(name, schema):
     return result
 
 
+def enforce_forced_technical_strings(exh_name, file_name, raw):
+    """Restore mandatory runtime identifiers inside a compiled EXD page.
+
+    Canonical values come from Square Enix's untranslated JA/DE/FR pages, so
+    this also repairs a downloaded release compiled from a contaminated EN
+    page without touching any player-facing Italian text.
+    """
+    name = exh_name.lower().replace(".exh", "")
+    forced = FORCED_TECHNICAL_STRING_COLUMNS.get(name, frozenset())
+    if not forced:
+        return raw
+    exh = read_file(f"{name}.exh")
+    if not exh:
+        raise ValueError(f"Schema EXH non disponibile per la protezione tecnica di {name}.")
+    schema = parse_exh(exh)
+    invalid = sorted(i for i in forced if i >= len(schema["columns"]) or schema["columns"][i][0] != 0)
+    if invalid:
+        raise ValueError(f"Colonne tecniche non compatibili con lo schema {name}: {invalid}.")
+    _, canonical = _detect_technical_string_columns(name, schema)
+    values = {}
+    for record in _row_records(raw, schema):
+        for sub in record["subs"]:
+            key = (record["row_id"], sub["sub_id"])
+            replacements = {}
+            for col_index in forced:
+                canonical_value = canonical.get((record["row_id"], sub["sub_id"], col_index))
+                if canonical_value is None:
+                    raise ValueError(
+                        f"Valore tecnico canonico assente: {name}, riga {record['row_id']}, "
+                        f"colonna {col_index}."
+                    )
+                replacements[col_index] = canonical_value
+            values[key] = replacements
+    return _compile_page(raw, schema, values, {})
+
+
 def compile_exd(exh_name):
     name = exh_name.lower().replace(".exh", "")
     csv_path, tags_path, meta_path = (os.path.join(WORKSPACE_DIR, f"{name}{suffix}")
@@ -885,6 +928,7 @@ def compile_exd(exh_name):
         return {"error": "CSV mancante. Caricare o estrarre il file prima della compilazione."}
     schema = parse_exh(read_file(f"{name}.exh"))
     technical_columns, canonical_technical = _detect_technical_string_columns(name, schema)
+    forced_technical = FORCED_TECHNICAL_STRING_COLUMNS.get(name, frozenset())
     # Tag dictionaries belong to the selected workspace and travel with the CSV.
     # This prevents an unrelated legacy directory from silently changing output.
     tag_source = tags_path
@@ -952,14 +996,19 @@ def compile_exd(exh_name):
         protected = protected_rows.get((int(meta["row_id"]), meta["sub_id"]))
         for i in technical_columns:
             position = first + i
-            if protected and position < len(protected):
+            canonical = canonical_technical.get(
+                (int(meta["row_id"]), meta["sub_id"], i)
+            )
+            if i in forced_technical:
+                if canonical is None:
+                    raise ValueError(
+                        f"Valore tecnico canonico assente: {name}, riga {meta['row_id']}, colonna {i}."
+                    )
+                values[i] = canonical
+            elif protected and position < len(protected):
                 values[i] = protected[position]
-            else:
-                canonical = canonical_technical.get(
-                    (int(meta["row_id"]), meta["sub_id"], i)
-                )
-                if canonical is not None:
-                    values[i] = canonical
+            elif canonical is not None:
+                values[i] = canonical
         values_by_file.setdefault(meta["file"], {})[(int(meta["row_id"]), meta["sub_id"])] = values
     compiled, files, byte_audit = [], [], []
     source_hashes, output_hashes = {}, {}
